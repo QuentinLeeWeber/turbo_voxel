@@ -48,7 +48,11 @@ impl Chunk {
         }
 
 
-        return 0.0;
+        let new_x = x.min(CHUNK_WIDTH - 1);
+        let new_y = y.min(CHUNK_WIDTH - 1);
+        let new_z = z.min(CHUNK_WIDTH - 1);
+
+        return self.voxels[new_x][new_y][new_z];
     }
 
     pub fn set_voxel (&mut self, x: usize, y: usize, z: usize, val: f32) {
