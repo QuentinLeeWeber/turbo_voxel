@@ -5,12 +5,12 @@ use crate::marching_cubes_data::*;
 
 
 pub struct Voxels {
-    pub chunks: Vec<Chunk>,
+    pub chunks: HashMap<[i32; 3],Chunk>,
 }
 
 impl Voxels {
     pub fn new () -> Self {
-        Self { chunks: (Vec::new()) }
+        Self { chunks: HashMap::new() }
     }
 }
 
@@ -98,9 +98,9 @@ impl Chunk {
                         ];
 
                         let points = [
-                            edge_idx_to_point_coord(edges[0], -1.0, 1.0),
-                            edge_idx_to_point_coord(edges[1], -1.0, 1.0),
-                            edge_idx_to_point_coord(edges[2], -1.0, 1.0),
+                            edge_idx_to_point_coord(self, [x, y, z], edges[0], -1.0, 1.0),
+                            edge_idx_to_point_coord(self, [x, y, z], edges[1], -1.0, 1.0),
+                            edge_idx_to_point_coord(self, [x, y, z], edges[2], -1.0, 1.0),
                         ];
 
                         let hashes = [
@@ -140,15 +140,28 @@ pub fn edge_idx_to_point_hash(idx: i8, pos: [i32; 3], offset: [usize; 3]) -> [is
     return hash;
 }
 
-pub fn edge_idx_to_point_coord(idx: i8, v1: f32, v2: f32) -> [f32; 3] {
+pub fn edge_idx_to_point_coord(chunk: &Chunk, pos: [usize; 3], idx: i8, v1: f32, v2: f32) -> [f32; 3] {
     let points = edge_vertex_indices[idx as usize];
-    let p1 = [((points[0] >> 0) & 1) as f32, ((points[0] >> 1) & 1) as f32, ((points[0] >> 2) & 1) as f32];
-    let p2 = [((points[1] >> 0) & 1) as f32, ((points[1] >> 1) & 1) as f32, ((points[1] >> 2) & 1) as f32];
+    let p1 = [(points[0] >> 0) & 1, (points[0] >> 1) & 1, (points[0] >> 2) & 1];
+    let p2 = [(points[1] >> 0) & 1, (points[1] >> 1) & 1, (points[1] >> 2) & 1];
+
+    let val1 = chunk.get_voxel(
+        p1[0] as usize + pos[0],
+        p1[1] as usize + pos[1],
+        p1[2] as usize + pos[2]
+    );
+    let val2 = chunk.get_voxel(
+        p2[0] as usize + pos[0],
+        p2[1] as usize + pos[1],
+        p2[2] as usize + pos[2]
+    );
+
+    let lerp = -val2 / (val1 - val2);
 
     return [
-        (p1[0] + p2[0])/2.0,
-        (p1[1] + p2[1])/2.0,
-        (p1[2] + p2[2])/2.0,
+        (p1[0] as f32)*lerp + (p2[0] as f32)*(1.0 - lerp),
+        (p1[1] as f32)*lerp + (p2[1] as f32)*(1.0 - lerp),
+        (p1[2] as f32)*lerp + (p2[2] as f32)*(1.0 - lerp),
     ];
 }
 
