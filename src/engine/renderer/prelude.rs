@@ -88,8 +88,8 @@ pub struct MaterialData {
 pub struct MeshData {
     pub id: u32,
     pub vertices: Vec<VertexData>,
-    indices: Vec<u32>,
-    material_id: u32,
+    pub indices: Vec<u32>,
+    pub material_id: u32,
 }
 impl MeshData {
     pub fn new(
@@ -109,7 +109,7 @@ impl MeshData {
 /*
  * a low level Vertex for rendering
  */
-#[derive(BufferContents, Vertex)]
+#[derive(BufferContents, Vertex, Debug)]
 #[repr(C)]
 pub struct VertexData {
     #[format(R32G32B32_SFLOAT)]

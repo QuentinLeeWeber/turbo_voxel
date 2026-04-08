@@ -57,7 +57,7 @@ mod fs {
     );
 }
 mod object_data;
-mod prelude;
+pub mod prelude;
 use prelude::*;
 
 pub struct RenderData {
@@ -201,6 +201,11 @@ impl Renderer {
             device_extensions,
         );
 
+        let supported_features = physical_device.supported_features();
+        if !supported_features.multi_draw_indirect {
+            panic!("Selected GPU does not support multi_draw_indirect");
+        }
+
         let queue = queues.next().unwrap();
 
         let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
@@ -226,8 +231,11 @@ impl Renderer {
             }
             objs.insert(obj.id, obj);
         }
+        if vertices.len() == 0 {
+            unreachable!("Empty vertex array given to renderer");
+        }
 
-        let vertex_buffer = Buffer::new_slice(
+        let vertex_buffer = Buffer::from_iter(
             memory_allocator.clone(),
             BufferCreateInfo {
                 usage: BufferUsage::VERTEX_BUFFER,
@@ -238,7 +246,7 @@ impl Renderer {
                     | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
                 ..Default::default()
             },
-            1024,
+            vertices,
         )
         .unwrap();
         let mut instances = vec![];
@@ -291,8 +299,8 @@ impl Renderer {
             indirect_buffer,
             instances: instances,
             indirect_commands: indirect_commands,
-            max_indirect_commands: 0,
-            max_instance_count: 0,
+            max_indirect_commands: 1024,
+            max_instance_count: 1024,
             objects: objs,
             mesh_buffer_mapping: mesh_buffer_mapping,
         };
