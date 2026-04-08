@@ -69,7 +69,8 @@ pub struct RenderData {
 }
 struct MeshBufferInfo {
     first_vertex: u32,
-    vertex_count: u32,
+    index_count: u32,
+    index_start: u32,
 }
 
 pub struct Renderer {
@@ -77,13 +78,14 @@ pub struct Renderer {
     objects: HashMap<u32, ObjectData>,
     instance: Arc<Instance>,
     instances: Vec<InstanceData>,
-    indirect_commands: Vec<DrawIndirectCommand>,
+    indirect_commands: Vec<DrawIndexedIndirectCommand>,
     max_indirect_commands: usize,
     max_instance_count: usize,
     command_buffer_allocator: Arc<StandardCommandBufferAllocator>,
     vertex_buffer: Subbuffer<[VertexData]>,
+    index_buffer: Subbuffer<[u32]>,
     instance_buffer: Subbuffer<[InstanceData]>,
-    indirect_buffer: Subbuffer<[DrawIndirectCommand]>,
+    indirect_buffer: Subbuffer<[DrawIndexedIndirectCommand]>,
     physical_device: Arc<PhysicalDevice>,
     device: Arc<Device>,
     queue_family_index: u32,
@@ -118,10 +120,11 @@ impl Renderer {
     pub fn add_indirect_draw(&mut self, mesh_id: u32) {
         let info = self.mesh_buffer_mapping.get(&mesh_id).unwrap();
 
-        self.indirect_commands.push(DrawIndirectCommand {
-            vertex_count: info.vertex_count,
+        self.indirect_commands.push(DrawIndexedIndirectCommand {
+            index_count: info.index_count,
             instance_count: 1,
-            first_vertex: info.first_vertex,
+            first_index: info.first_vertex,
+            vertex_offset: 0,
             first_instance: (self.instances.len() - 1) as u32,
         });
         let count = self.indirect_commands.len();
@@ -211,17 +214,21 @@ impl Renderer {
 
         let mut objs = HashMap::new();
         let mut vertices = Vec::new();
+        let mut indices = Vec::new();
         let mut mesh_buffer_mapping = HashMap::new();
-        let mut pos = 0;
+        let mut vertex_pos = 0;
+        let mut index_pos = 0;
         for obj in objects {
             for mut mesh in obj.clone().meshes.drain(..) {
-                let len = mesh.vertices.len();
                 let info = MeshBufferInfo {
-                    first_vertex: pos,
-                    vertex_count: len as u32,
+                    first_vertex: vertex_pos,
+                    index_start: index_pos,
+                    index_count: mesh.indices.len() as u32,
                 };
-                pos += len as u32;
+                vertex_pos += mesh.vertices.len() as u32;
+                index_pos += mesh.indices.len() as u32;
                 vertices.append(&mut mesh.vertices);
+                indices.append(&mut mesh.indices);
                 mesh_buffer_mapping.insert(mesh.id, info);
             }
             objs.insert(obj.id, obj.clone());
@@ -244,7 +251,23 @@ impl Renderer {
             vertices,
         )
         .unwrap();
-        let mut instances = vec![];
+
+        let index_buffer = Buffer::from_iter(
+            memory_allocator.clone(),
+            BufferCreateInfo {
+                usage: BufferUsage::INDEX_BUFFER,
+                ..Default::default()
+            },
+            AllocationCreateInfo {
+                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
+                    | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
+                ..Default::default()
+            },
+            indices,
+        )
+        .expect("failed to create index buffer");
+
+        let instances = vec![];
 
         let indirect_commands = vec![];
 
@@ -298,6 +321,7 @@ impl Renderer {
             max_instance_count: 1024,
             objects: objs,
             mesh_buffer_mapping: mesh_buffer_mapping,
+            index_buffer: index_buffer,
         };
     }
 
@@ -425,12 +449,14 @@ impl Renderer {
                 0,
                 (self.vertex_buffer.clone(), self.instance_buffer.clone()),
             )
+            .unwrap()
+            .bind_index_buffer(self.index_buffer.clone())
             .unwrap();
         let command_count = self.indirect_commands.len() as u64;
 
         if command_count > 0 {
             let buffer_slice = self.indirect_buffer.clone().slice(0..command_count);
-            unsafe { builder.draw_indirect(buffer_slice) }.unwrap();
+            unsafe { builder.draw_indexed_indirect(buffer_slice) }.unwrap();
         } else {
         }
 

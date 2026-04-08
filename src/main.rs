@@ -18,7 +18,7 @@ fn main() {
                 VertexData::new([0.0, 0.5, 0.0], [0.0, 0.0], [1.0, 0.0, 0.0]),
                 VertexData::new([0.25, -0.1, 0.0], [0.0, 0.0], [1.0, 0.0, 0.0]),
             ],
-            indices: vec![],
+            indices: vec![0, 1, 2],
             material_id: 0,
         }],
     }];
