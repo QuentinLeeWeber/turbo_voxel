@@ -8,3 +8,7 @@ cgmath = "0.18.0"
 vulkano = "0.35.2"
 vulkano-shaders = "0.35.0"
 winit = "0.30.13"
+
+
+[build-dependencies]
+vulkano-shaders = "0.35.0"
