@@ -1,3 +1,4 @@
+use std::ops::{Div, Rem};
 use std::vec::Vec;
 use std::collections::HashMap;
 
@@ -14,7 +15,7 @@ impl Voxels {
     }
 }
 
-const CHUNK_WIDTH: usize = 16;    // x
+const CHUNK_WIDTH: usize = 16;
 
 pub struct Chunk {
     pub pos: [i32; 3],
@@ -26,20 +27,40 @@ impl Chunk {
         Self { pos: [ x,  y,  z], voxels: [[[0.0; CHUNK_WIDTH]; CHUNK_WIDTH]; CHUNK_WIDTH] }
     }
 
-    pub fn get_voxel (&self, x: usize, y: usize, z: usize) -> f32 {
-        self.voxels[x][y][z]
+    pub fn get_voxel (&self, voxels: &Voxels, x: usize, y: usize, z: usize) -> f32 {
+        if (x < CHUNK_WIDTH) &&
+           (y < CHUNK_WIDTH) &&
+           (z < CHUNK_WIDTH) {
+            return self.voxels[x][y][z];
+        }
+        let chunk_x = (x.div(CHUNK_WIDTH) as i32) + self.pos[0];
+        let chunk_y = (y.div(CHUNK_WIDTH) as i32) + self.pos[1];
+        let chunk_z = (z.div(CHUNK_WIDTH) as i32) + self.pos[2];
+
+        let idx = [chunk_x, chunk_y, chunk_z];
+        if voxels.chunks.contains_key(&idx) {
+            let chunk = &voxels.chunks[&idx];
+            let new_x = x.rem(CHUNK_WIDTH);
+            let new_y = y.rem(CHUNK_WIDTH);
+            let new_z = z.rem(CHUNK_WIDTH);
+
+            return chunk.get_voxel(voxels, new_x, new_y, new_z);
+        }
+
+
+        return 0.0;
     }
-    
+
     pub fn set_voxel (&mut self, x: usize, y: usize, z: usize, val: f32) {
         self.voxels[x][y][z] = val;
     }
 
-    fn get_table_idx (&self, x: usize, y: usize, z: usize) -> u8 {
+    fn get_table_idx (&self, voxels: &Voxels, x: usize, y: usize, z: usize) -> u8 {
         let mut idx: u8 = 0;
         for dz in 0..2 {
             for dy in 0..2 {
                 for dx in 0..2 {
-                    idx |= ((self.get_voxel(x+dx, y+dy, z+dz) > 0.0) as u8) << (dx + 2*dy + 4*dz);
+                    idx |= ((self.get_voxel(voxels, x+dx, y+dy, z+dz) > 0.0) as u8) << (dx + 2*dy + 4*dz);
                 }
             }
         }
@@ -78,13 +99,13 @@ impl Chunk {
     }
 
 
-    pub fn to_mesh (&self) -> Mesh {
+    pub fn to_mesh (&self, voxels: &Voxels) -> Mesh {
         let mut mesh = Mesh::new();
         
-        for z in 0..15 {
-            for y in 0..15 {
-                for x in 0..15 {
-                    let idx = self.get_table_idx(x, y, z);
+        for z in 0..16 {
+            for y in 0..16 {
+                for x in 0..16 {
+                    let idx = self.get_table_idx(voxels, x, y, z);
                     let case = &triangle_table[idx as usize];
 
                     if case.count == 0 {
@@ -98,9 +119,9 @@ impl Chunk {
                         ];
 
                         let points = [
-                            edge_idx_to_point_coord(self, [x, y, z], edges[0], -1.0, 1.0),
-                            edge_idx_to_point_coord(self, [x, y, z], edges[1], -1.0, 1.0),
-                            edge_idx_to_point_coord(self, [x, y, z], edges[2], -1.0, 1.0),
+                            edge_idx_to_point_coord(self, voxels, [x, y, z], edges[0]),
+                            edge_idx_to_point_coord(self, voxels, [x, y, z], edges[1]),
+                            edge_idx_to_point_coord(self, voxels, [x, y, z], edges[2]),
                         ];
 
                         let hashes = [
@@ -112,9 +133,9 @@ impl Chunk {
                         self.add_triangle(
                             &mut mesh,
                             [
-                                ((x as i32) + self.pos[0]) as f32,
-                                ((y as i32) + self.pos[1]) as f32,
-                                ((z as i32) + self.pos[2]) as f32,
+                                ((x as i32) + self.pos[0]*(CHUNK_WIDTH as i32)) as f32,
+                                ((y as i32) + self.pos[1]*(CHUNK_WIDTH as i32)) as f32,
+                                ((z as i32) + self.pos[2]*(CHUNK_WIDTH as i32)) as f32,
                             ],
                             points,
                             hashes
@@ -140,17 +161,19 @@ pub fn edge_idx_to_point_hash(idx: i8, pos: [i32; 3], offset: [usize; 3]) -> [is
     return hash;
 }
 
-pub fn edge_idx_to_point_coord(chunk: &Chunk, pos: [usize; 3], idx: i8, v1: f32, v2: f32) -> [f32; 3] {
+pub fn edge_idx_to_point_coord(chunk: &Chunk, voxels: &Voxels, pos: [usize; 3], idx: i8) -> [f32; 3] {
     let points = edge_vertex_indices[idx as usize];
     let p1 = [(points[0] >> 0) & 1, (points[0] >> 1) & 1, (points[0] >> 2) & 1];
     let p2 = [(points[1] >> 0) & 1, (points[1] >> 1) & 1, (points[1] >> 2) & 1];
 
     let val1 = chunk.get_voxel(
+        voxels,
         p1[0] as usize + pos[0],
         p1[1] as usize + pos[1],
         p1[2] as usize + pos[2]
     );
     let val2 = chunk.get_voxel(
+        voxels,
         p2[0] as usize + pos[0],
         p2[1] as usize + pos[1],
         p2[2] as usize + pos[2]
