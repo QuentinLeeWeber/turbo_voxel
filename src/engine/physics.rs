@@ -112,13 +112,13 @@ impl PosInParent {
     }
     fn from_bools(in_lower_x_half: bool, in_lower_y_half: bool, in_lower_z_half: bool) -> Self {
         let mut array_pos = 0;
-        if in_lower_x_half {
+        if !in_lower_x_half {
             array_pos += 1;
         }
-        if in_lower_y_half {
+        if !in_lower_y_half {
             array_pos += 2;
         }
-        if in_lower_z_half {
+        if !in_lower_z_half {
             array_pos += 4;
         }
         Self::from_u32(array_pos).unwrap()
