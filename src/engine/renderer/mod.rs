@@ -218,8 +218,8 @@ impl Renderer {
         let mut vertices = Vec::new();
         let mut mesh_buffer_mapping = HashMap::new();
         let mut pos = 0;
-        for mut obj in objects {
-            for mut mesh in obj.meshes.drain(..) {
+        for obj in objects {
+            for mut mesh in obj.clone().meshes.drain(..) {
                 let len = mesh.vertices.len();
                 let info = MeshBufferInfo {
                     first_vertex: pos,
@@ -229,7 +229,7 @@ impl Renderer {
                 vertices.append(&mut mesh.vertices);
                 mesh_buffer_mapping.insert(mesh.id, info);
             }
-            objs.insert(obj.id, obj);
+            objs.insert(obj.id, obj.clone());
         }
         if vertices.len() == 0 {
             unreachable!("Empty vertex array given to renderer");

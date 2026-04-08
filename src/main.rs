@@ -21,6 +21,7 @@ fn main() {
         }],
     }];
     let mut renderer = Renderer::new(&event_loop, objects); //TODO: hier alle Objekte der Szene übergeben.
+    renderer.add_object_instance(1, InstanceData::new([0.0, 0.0, 0.0], 1.0));
     event_loop.set_control_flow(winit::event_loop::ControlFlow::Wait);
     event_loop.run_app(&mut renderer).unwrap();
 
