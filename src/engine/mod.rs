@@ -44,7 +44,7 @@ impl Engine {
     pub fn new(event_loop: &winit::event_loop::EventLoop<()>) -> Self {
         Self {
             scene: Scene::new(),
-            renderer: Renderer::new(&event_loop),
+            renderer: Renderer::new(&event_loop, Vec::new()), // TODO: hier alle Objekte der Szene übergeben.
         }
     }
 
