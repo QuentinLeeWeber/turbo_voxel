@@ -49,6 +49,8 @@ impl Projection {
         self.aspect = width as f32 / height as f32;
     }
     pub fn calc_matrix(&self) -> Matrix4<f32> {
-        perspective(self.fovy, self.aspect, self.znear, self.zfar)
+        let mut proj = perspective(self.fovy, self.aspect, self.znear, self.zfar);
+        proj[1][1] *= -1.0;
+        proj
     }
 }
