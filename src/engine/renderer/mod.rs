@@ -115,9 +115,9 @@ impl Renderer {
         ));
 
         let vertices = [
-        //    VertexData::new([-0.5, -0.25]),
-          //  VertexData::new([0.0, 0.5]),
-            //VertexData::new([0.25, -0.1]),
+            VertexData::new([-0.5, -0.25, 0.0], [0.0, 0.0], [1.0, 0.0, 0.0]),
+            VertexData::new([0.0, 0.5, 0.0], [0.0, 0.0], [1.0, 0.0, 0.0]),
+            VertexData::new([0.25, -0.1, 0.0], [0.0, 0.0], [1.0, 0.0, 0.0]),
         ];
 
         let vertex_buffer = Buffer::from_iter(
@@ -134,9 +134,7 @@ impl Renderer {
             vertices,
         )
         .unwrap();
-        let mut instances = vec![
-            //InstanceData::new([0.0, 0.0], 1.0)
-        ];
+        let mut instances = vec![InstanceData::new([0.0, 0.0, 0.0], 1.0)];
 
         let indirect_commands = vec![DrawIndirectCommand {
             vertex_count: 3,
