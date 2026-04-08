@@ -13,6 +13,43 @@ impl Voxels {
     pub fn new () -> Self {
         Self { chunks: HashMap::new() }
     }
+
+    pub fn insert_chunk(&mut self, chunk: Chunk) -> &Chunk {
+        let pos = chunk.pos;
+        
+        assert!(!self.chunks.contains_key(&pos));
+
+        self.chunks.insert(pos, chunk);
+
+        return self.get_chunk(pos);
+    }
+
+    pub fn get_chunk(&self, pos: [i32; 3]) -> &Chunk {
+        assert!(self.chunks.contains_key(&pos));
+        return &self.chunks[&pos];
+    }
+    
+    pub fn get_mut_chunk(&mut self, pos: [i32; 3]) -> &mut Chunk {
+        assert!(self.chunks.contains_key(&pos));
+        return self.chunks.get_mut(&pos).unwrap();
+    }
+    
+    pub fn del_chunk(&mut self, pos: [i32; 3]) -> Option<Chunk> {
+        assert!(self.chunks.contains_key(&pos));
+        return self.chunks.remove(&pos);
+    }
+
+    pub fn new_chunk(&mut self, pos: [i32; 3]) -> &mut Chunk {
+        let chunk = Chunk::new(pos);
+        self.insert_chunk(chunk);
+        return self.get_mut_chunk(pos);
+    }
+
+    pub fn get_chunk_mesh(&self, pos: [i32; 3]) -> Mesh {
+        let chunk = &self.chunks[&pos];
+
+        return chunk.get_mesh(self);
+    }
 }
 
 const CHUNK_WIDTH: usize = 16;
@@ -23,8 +60,8 @@ pub struct Chunk {
 }
 
 impl Chunk {
-    pub fn new (x: i32, y: i32, z: i32) -> Self {
-        Self { pos: [ x,  y,  z], voxels: [[[0.0; CHUNK_WIDTH]; CHUNK_WIDTH]; CHUNK_WIDTH] }
+    pub fn new (pos: [i32; 3]) -> Self {
+        Self { pos: pos, voxels: [[[0.0; CHUNK_WIDTH]; CHUNK_WIDTH]; CHUNK_WIDTH] }
     }
 
     pub fn get_voxel (&self, voxels: &Voxels, x: usize, y: usize, z: usize) -> f32 {
@@ -78,7 +115,7 @@ impl Chunk {
         }
 
 
-        let idx = mesh.vertexes.len();
+        let idx = mesh.vertices.len();
         let p = [
             base[0] + offset[0],
             base[1] + offset[1],
@@ -87,23 +124,23 @@ impl Chunk {
         let vertex = Vertex::from_pos(p);
 
         mesh.hashed_points.insert(hash, idx);
-        mesh.vertexes.push(vertex);
+        mesh.vertices.push(vertex);
 
         return idx;
     }
 
-    fn add_triangle (&self, mesh: &mut Mesh, base: [f32; 3], offset: [[f32; 3]; 3], hashes: [[isize; 4]; 3]) {
+    fn add_face (&self, mesh: &mut Mesh, base: [f32; 3], offset: [[f32; 3]; 3], hashes: [[isize; 4]; 3]) {
         let p1 = self.add_point(mesh, base, offset[0], hashes[0]);
         let p2 = self.add_point(mesh, base, offset[1], hashes[1]);
         let p3 = self.add_point(mesh, base, offset[2], hashes[2]);
 
-        let triangle = Triangle::from_idxs([p1, p2, p3]);
+        let face = Face::from_idxs([p1, p2, p3]);
 
-        mesh.triangles.push(triangle);
+        mesh.faces.push(face);
     }
 
 
-    pub fn to_mesh (&self, voxels: &Voxels) -> Mesh {
+    pub fn get_mesh (&self, voxels: &Voxels) -> Mesh{
         let mut mesh = Mesh::new();
         
         for z in 0..16 {
@@ -115,11 +152,11 @@ impl Chunk {
                     if case.count == 0 {
                         continue;
                     }
-                    for triangle_idx in 0..case.count {
+                    for face_idx in 0..case.count {
                         let edges = [
-                            case.edges[(triangle_idx*3 + 0) as usize],
-                            case.edges[(triangle_idx*3 + 1) as usize],
-                            case.edges[(triangle_idx*3 + 2) as usize],
+                            case.edges[(face_idx*3 + 0) as usize],
+                            case.edges[(face_idx*3 + 1) as usize],
+                            case.edges[(face_idx*3 + 2) as usize],
                         ];
 
                         let points = [
@@ -134,7 +171,7 @@ impl Chunk {
                             edge_idx_to_point_hash(edges[2], self.pos, [x, y, z]),
                         ];
 
-                        self.add_triangle(
+                        self.add_face(
                             &mut mesh,
                             [
                                 ((x as i32) + self.pos[0]*(CHUNK_WIDTH as i32)) as f32,
@@ -148,10 +185,6 @@ impl Chunk {
                 }
             }
         }
-
-
-
-
         return mesh;
     }
 }
@@ -205,11 +238,11 @@ impl Vertex {
 }
 
 #[derive(Debug)]
-pub struct Triangle {
+pub struct Face {
     pub points: [usize; 3],
 }
 
-impl Triangle {
+impl Face {
     pub fn from_idxs (idxs: [usize; 3]) -> Self {
         Self { points: idxs }
     }
@@ -217,18 +250,24 @@ impl Triangle {
 
 #[derive(Debug)]
 pub struct Mesh {
-    pub vertexes: Vec<Vertex>,
-    pub triangles: Vec<Triangle>,
+    pub vertices: Vec<Vertex>,
+    pub faces: Vec<Face>,
     pub hashed_points: HashMap<[isize; 4], usize>,
 }
 
 impl Mesh {
     pub fn new () -> Self {
         Self {
-            vertexes: Vec::new(),
-            triangles: Vec::new(),
+            vertices: Vec::new(),
+            faces: Vec::new(),
             hashed_points: HashMap::new(),
         }
+    }
+
+    pub fn clear (&mut self) {
+        self.vertices.clear();
+        self.faces.clear();
+        self.hashed_points.clear();
     }
 }
 
