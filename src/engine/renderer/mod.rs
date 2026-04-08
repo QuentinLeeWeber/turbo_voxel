@@ -1,3 +1,4 @@
+use cgmath::{Deg, Point3, Rad};
 use std::collections::HashMap;
 use std::ops::RangeInclusive;
 use std::sync::Arc;
@@ -6,9 +7,15 @@ use vulkano::command_buffer::allocator::StandardCommandBufferAllocator;
 use vulkano::command_buffer::{
     AutoCommandBufferBuilder, DrawIndexedIndirectCommand, DrawIndirectCommand, RenderPassBeginInfo,
 };
+use vulkano::descriptor_set::allocator::{
+    StandardDescriptorSetAllocator, StandardDescriptorSetAllocatorCreateInfo,
+};
+use vulkano::descriptor_set::layout::{DescriptorSetLayoutBinding, DescriptorSetLayoutCreateInfo};
+use vulkano::descriptor_set::{DescriptorSet, WriteDescriptorSet};
 use vulkano::device::{Device, DeviceCreateInfo, Queue, QueueCreateInfo};
 use vulkano::image::view::ImageView;
 use vulkano::image::{Image, ImageUsage};
+use vulkano::pipeline::Pipeline;
 use vulkano::pipeline::graphics::color_blend::{ColorBlendAttachmentState, ColorBlendState};
 use vulkano::pipeline::graphics::input_assembly::InputAssemblyState;
 use vulkano::pipeline::graphics::multisample::MultisampleState;
@@ -51,9 +58,12 @@ mod fs {
         path: "src/engine/renderer/shaders/fragment_shader.glsl"
     );
 }
+mod camera;
 mod object_data;
 pub mod prelude;
 use prelude::*;
+
+use crate::engine::renderer::camera::Camera;
 
 pub struct RenderData {
     window: Arc<Window>,
@@ -66,10 +76,12 @@ pub struct RenderData {
     recreate_swapchain: bool,
     previous_frame_end: Option<Box<dyn GpuFuture>>,
     viewport: Viewport,
+    camera_uniform_descriptor_set: Arc<DescriptorSet>,
 }
 struct MeshBufferInfo {
     first_vertex: u32,
-    vertex_count: u32,
+    index_count: u32,
+    index_start: u32,
 }
 
 pub struct Renderer {
@@ -77,13 +89,14 @@ pub struct Renderer {
     objects: HashMap<u32, ObjectData>,
     instance: Arc<Instance>,
     instances: Vec<InstanceData>,
-    indirect_commands: Vec<DrawIndirectCommand>,
+    indirect_commands: Vec<DrawIndexedIndirectCommand>,
     max_indirect_commands: usize,
     max_instance_count: usize,
     command_buffer_allocator: Arc<StandardCommandBufferAllocator>,
     vertex_buffer: Subbuffer<[VertexData]>,
+    index_buffer: Subbuffer<[u32]>,
     instance_buffer: Subbuffer<[InstanceData]>,
-    indirect_buffer: Subbuffer<[DrawIndirectCommand]>,
+    indirect_buffer: Subbuffer<[DrawIndexedIndirectCommand]>,
     physical_device: Arc<PhysicalDevice>,
     device: Arc<Device>,
     queue_family_index: u32,
@@ -91,6 +104,9 @@ pub struct Renderer {
     memory_allocator: Arc<StandardMemoryAllocator>,
     render_data: Option<RenderData>,
     mesh_buffer_mapping: HashMap<u32, MeshBufferInfo>,
+    camera: Camera,
+    camera_buffer: Subbuffer<vs::Camera>,
+    descriptor_set_allocator: Arc<StandardDescriptorSetAllocator>,
 }
 /*
  *
@@ -118,10 +134,11 @@ impl Renderer {
     pub fn add_indirect_draw(&mut self, mesh_id: u32) {
         let info = self.mesh_buffer_mapping.get(&mesh_id).unwrap();
 
-        self.indirect_commands.push(DrawIndirectCommand {
-            vertex_count: info.vertex_count,
+        self.indirect_commands.push(DrawIndexedIndirectCommand {
+            index_count: info.index_count,
             instance_count: 1,
-            first_vertex: info.first_vertex,
+            first_index: info.first_vertex,
+            vertex_offset: 0,
             first_instance: (self.instances.len() - 1) as u32,
         });
         let count = self.indirect_commands.len();
@@ -211,17 +228,21 @@ impl Renderer {
 
         let mut objs = HashMap::new();
         let mut vertices = Vec::new();
+        let mut indices = Vec::new();
         let mut mesh_buffer_mapping = HashMap::new();
-        let mut pos = 0;
+        let mut vertex_pos = 0;
+        let mut index_pos = 0;
         for obj in objects {
             for mut mesh in obj.clone().meshes.drain(..) {
-                let len = mesh.vertices.len();
                 let info = MeshBufferInfo {
-                    first_vertex: pos,
-                    vertex_count: len as u32,
+                    first_vertex: vertex_pos,
+                    index_start: index_pos,
+                    index_count: mesh.indices.len() as u32,
                 };
-                pos += len as u32;
+                vertex_pos += mesh.vertices.len() as u32;
+                index_pos += mesh.indices.len() as u32;
                 vertices.append(&mut mesh.vertices);
+                indices.append(&mut mesh.indices);
                 mesh_buffer_mapping.insert(mesh.id, info);
             }
             objs.insert(obj.id, obj.clone());
@@ -230,43 +251,28 @@ impl Renderer {
             unreachable!("Empty vertex array given to renderer");
         }
 
-        let vertex_buffer = Buffer::from_iter(
-            memory_allocator.clone(),
-            BufferCreateInfo {
-                usage: BufferUsage::VERTEX_BUFFER,
-                ..Default::default()
-            },
-            AllocationCreateInfo {
-                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
-                    | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
-                ..Default::default()
-            },
-            vertices,
-        )
-        .unwrap();
-        let mut instances = vec![];
-
+        let instances = vec![];
         let indirect_commands = vec![];
 
-        let indirect_buffer = Buffer::new_slice(
-            memory_allocator.clone(),
-            BufferCreateInfo {
-                usage: BufferUsage::INDIRECT_BUFFER,
-                ..Default::default()
-            },
-            AllocationCreateInfo {
-                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
-                    | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
-                ..Default::default()
-            },
-            1024,
-        )
-        .unwrap();
+        let vertex_buffer = create_vertex_buffer(&memory_allocator, vertices);
+        let index_buffer = create_index_buffer(&memory_allocator, indices);
+        let indirect_buffer = create_indirect_buffer(&memory_allocator);
+        let instance_buffer = create_instance_buffer(&memory_allocator);
 
-        let instance_buffer = Buffer::new_slice(
+        let camera = Camera {
+            position: Point3::new(0.0, 0.0, 0.0),
+            yaw: Deg(-90.0).into(),
+            pitch: Deg(0.0).into(),
+        };
+        let camera_uniform = vs::Camera {
+            view_position: [camera.position.x, camera.position.y, camera.position.z, 0.0].into(),
+            view_proj: camera.calc_matrix().into(),
+        };
+
+        let camera_buffer = Buffer::from_data(
             memory_allocator.clone(),
             BufferCreateInfo {
-                usage: BufferUsage::VERTEX_BUFFER,
+                usage: BufferUsage::UNIFORM_BUFFER,
                 ..Default::default()
             },
             AllocationCreateInfo {
@@ -274,10 +280,14 @@ impl Renderer {
                     | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
                 ..Default::default()
             },
-            1024,
-            //TODO: alle objekte hochladen
+            camera_uniform,
         )
-        .unwrap();
+        .expect("Failed to create buffer");
+
+        let descriptor_set_allocator = Arc::new(StandardDescriptorSetAllocator::new(
+            device.clone(),
+            Default::default(),
+        ));
 
         return Renderer {
             library,
@@ -298,6 +308,10 @@ impl Renderer {
             max_instance_count: 1024,
             objects: objs,
             mesh_buffer_mapping: mesh_buffer_mapping,
+            index_buffer: index_buffer,
+            camera: camera,
+            camera_buffer: camera_buffer,
+            descriptor_set_allocator: descriptor_set_allocator,
         };
     }
 
@@ -376,6 +390,7 @@ impl Renderer {
 
     pub fn render(&mut self) {
         let data = self.render_data.as_mut().unwrap();
+        let layout = data.pipeline.layout().set_layouts().get(0).unwrap();
         let window_size = data.window.as_ref().inner_size();
 
         if window_size.width == 0 || window_size.height == 0 {
@@ -425,12 +440,21 @@ impl Renderer {
                 0,
                 (self.vertex_buffer.clone(), self.instance_buffer.clone()),
             )
+            .unwrap()
+            .bind_index_buffer(self.index_buffer.clone())
+            .unwrap()
+            .bind_descriptor_sets(
+                vulkano::pipeline::PipelineBindPoint::Graphics,
+                data.pipeline.layout().clone(),
+                0,                                          // Set Index 0
+                data.camera_uniform_descriptor_set.clone(), // Hier kommt das Set rein
+            )
             .unwrap();
         let command_count = self.indirect_commands.len() as u64;
 
         if command_count > 0 {
             let buffer_slice = self.indirect_buffer.clone().slice(0..command_count);
-            unsafe { builder.draw_indirect(buffer_slice) }.unwrap();
+            unsafe { builder.draw_indexed_indirect(buffer_slice) }.unwrap();
         } else {
         }
 
@@ -522,6 +546,17 @@ impl Renderer {
             depth_range: RangeInclusive::new(0.0, 1.0),
         };
         let previous_frame_end = Some(sync::now(self.device.clone()).boxed());
+
+        let layout = pipeline.layout().set_layouts().get(0).unwrap();
+
+        let camera_uniform_descriptor_set = DescriptorSet::new(
+            self.descriptor_set_allocator.clone(),
+            layout.clone(),
+            [WriteDescriptorSet::buffer(0, self.camera_buffer.clone())],
+            [],
+        )
+        .expect("failed to create camera uniform descriptor set");
+
         self.render_data = Some(RenderData {
             window,
             surface,
@@ -533,8 +568,108 @@ impl Renderer {
             recreate_swapchain: false,
             previous_frame_end,
             viewport,
+            camera_uniform_descriptor_set,
         })
     }
+}
+
+fn create_instance_buffer(
+    memory_allocator: &Arc<
+        vulkano::memory::allocator::GenericMemoryAllocator<
+            vulkano::memory::allocator::FreeListAllocator,
+        >,
+    >,
+) -> Subbuffer<[InstanceData]> {
+    let instance_buffer = Buffer::new_slice(
+        memory_allocator.clone(),
+        BufferCreateInfo {
+            usage: BufferUsage::VERTEX_BUFFER,
+            ..Default::default()
+        },
+        AllocationCreateInfo {
+            memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
+                | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
+            ..Default::default()
+        },
+        1024,
+        //TODO: alle objekte hochladen
+    )
+    .unwrap();
+    instance_buffer
+}
+
+fn create_indirect_buffer(
+    memory_allocator: &Arc<
+        vulkano::memory::allocator::GenericMemoryAllocator<
+            vulkano::memory::allocator::FreeListAllocator,
+        >,
+    >,
+) -> Subbuffer<[DrawIndexedIndirectCommand]> {
+    let indirect_buffer = Buffer::new_slice(
+        memory_allocator.clone(),
+        BufferCreateInfo {
+            usage: BufferUsage::INDIRECT_BUFFER,
+            ..Default::default()
+        },
+        AllocationCreateInfo {
+            memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
+                | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
+            ..Default::default()
+        },
+        1024,
+    )
+    .unwrap();
+    indirect_buffer
+}
+
+fn create_index_buffer(
+    memory_allocator: &Arc<
+        vulkano::memory::allocator::GenericMemoryAllocator<
+            vulkano::memory::allocator::FreeListAllocator,
+        >,
+    >,
+    indices: Vec<u32>,
+) -> Subbuffer<[u32]> {
+    let index_buffer = Buffer::from_iter(
+        memory_allocator.clone(),
+        BufferCreateInfo {
+            usage: BufferUsage::INDEX_BUFFER,
+            ..Default::default()
+        },
+        AllocationCreateInfo {
+            memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
+                | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
+            ..Default::default()
+        },
+        indices,
+    )
+    .expect("failed to create index buffer");
+    index_buffer
+}
+
+fn create_vertex_buffer(
+    memory_allocator: &Arc<
+        vulkano::memory::allocator::GenericMemoryAllocator<
+            vulkano::memory::allocator::FreeListAllocator,
+        >,
+    >,
+    vertices: Vec<VertexData>,
+) -> Subbuffer<[VertexData]> {
+    let vertex_buffer = Buffer::from_iter(
+        memory_allocator.clone(),
+        BufferCreateInfo {
+            usage: BufferUsage::VERTEX_BUFFER,
+            ..Default::default()
+        },
+        AllocationCreateInfo {
+            memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
+                | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
+            ..Default::default()
+        },
+        vertices,
+    )
+    .unwrap();
+    vertex_buffer
 }
 
 fn create_device(
