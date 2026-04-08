@@ -54,7 +54,7 @@ pub trait Mesh {
 //TODO: implement loading into and unloading from renderer
 //TODO: implement rendering in renderer
 pub struct ObjectData {
-    pub name: String,
+    pub id: u32,
     pub materials: Vec<MaterialData>,
     pub meshes: Vec<MeshData>,
 }
@@ -86,20 +86,20 @@ pub struct MaterialData {
  * a low level loaded Mesh
  */
 pub struct MeshData {
-    name: String,
-    vertices: Vec<VertexData>,
+    pub id: u32,
+    pub vertices: Vec<VertexData>,
     indices: Vec<u32>,
     material_id: u32,
 }
 impl MeshData {
     pub fn new(
-        name: String,
+        id: u32,
         vertices: Vec<VertexData>,
         indices: Vec<u32>,
         material_id: u32,
     ) -> MeshData {
         return MeshData {
-            name,
+            id,
             vertices,
             indices,
             material_id,
@@ -129,7 +129,7 @@ impl VertexData {
     }
 }
 
-#[derive(BufferContents, Vertex)]
+#[derive(BufferContents, Vertex, Copy, Clone)]
 #[repr(C)]
 pub struct InstanceData {
     #[format(R32G32B32_SFLOAT)]

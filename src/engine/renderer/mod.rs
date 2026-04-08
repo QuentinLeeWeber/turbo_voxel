@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::ops::RangeInclusive;
 use std::sync::Arc;
 use vulkano::buffer::{Buffer, BufferCreateInfo, BufferUsage, Subbuffer};
@@ -55,6 +56,7 @@ mod fs {
         path: "src/engine/renderer/shaders/fragment_shader.glsl"
     );
 }
+mod object_data;
 mod prelude;
 use prelude::*;
 
@@ -70,10 +72,19 @@ pub struct RenderData {
     previous_frame_end: Option<Box<dyn GpuFuture>>,
     viewport: Viewport,
 }
+struct MeshBufferInfo {
+    first_vertex: u32,
+    vertex_count: u32,
+}
 
 pub struct Renderer {
     library: Arc<VulkanLibrary>,
+    objects: HashMap<u32, ObjectData>,
     instance: Arc<Instance>,
+    instances: Vec<InstanceData>,
+    indirect_commands: Vec<DrawIndirectCommand>,
+    max_indirect_commands: usize,
+    max_instance_count: usize,
     command_buffer_allocator: Arc<StandardCommandBufferAllocator>,
     vertex_buffer: Subbuffer<[VertexData]>,
     instance_buffer: Subbuffer<[InstanceData]>,
@@ -84,10 +95,93 @@ pub struct Renderer {
     queue: Arc<Queue>,
     memory_allocator: Arc<StandardMemoryAllocator>,
     render_data: Option<RenderData>,
+    mesh_buffer_mapping: HashMap<u32, MeshBufferInfo>,
 }
-
+/*
+ *
+ */
 impl Renderer {
-    pub fn new(event_loop: &impl HasDisplayHandle) -> Renderer {
+    /*
+     * add_instance object_id, Vec<InstanceDat>
+     *
+     */
+    pub fn add_object_instance(&mut self, object_id: u32, instanz: InstanceData) {
+        self.add_instance(instanz);
+        let mesh_ids: Vec<u32> = self
+            .objects
+            .get(&object_id)
+            .expect("Object ID not found")
+            .meshes
+            .iter()
+            .map(|mesh| mesh.id)
+            .collect();
+        for mesh_id in mesh_ids {
+            self.add_indirect_draw(mesh_id);
+        }
+    }
+
+    pub fn add_indirect_draw(&mut self, mesh_id: u32) {
+        let info = self.mesh_buffer_mapping.get(&mesh_id).unwrap();
+
+        self.indirect_commands.push(DrawIndirectCommand {
+            vertex_count: info.vertex_count,
+            instance_count: 1,
+            first_vertex: info.first_vertex,
+            first_instance: (self.instances.len() - 1) as u32,
+        });
+        let count = self.indirect_commands.len();
+
+        if count > self.max_indirect_commands {
+            self.max_indirect_commands = count * 2 + 1;
+            self.indirect_buffer = Buffer::from_iter(
+                self.memory_allocator.clone(),
+                BufferCreateInfo {
+                    usage: BufferUsage::INDIRECT_BUFFER,
+                    ..Default::default()
+                },
+                AllocationCreateInfo {
+                    memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
+                        | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
+                    ..Default::default()
+                },
+                self.indirect_commands.clone(),
+            )
+            .unwrap();
+        } else {
+            if let Ok(mut mapping) = self.indirect_buffer.write() {
+                mapping[..count].copy_from_slice(&self.indirect_commands);
+            }
+        }
+    }
+
+    pub fn add_instance(&mut self, instanz: InstanceData) {
+        self.instances.push(instanz);
+        let count = self.instances.len();
+
+        if count > self.max_instance_count {
+            self.max_instance_count = count * 2 + 1;
+            self.instance_buffer = Buffer::from_iter(
+                self.memory_allocator.clone(),
+                BufferCreateInfo {
+                    usage: BufferUsage::VERTEX_BUFFER,
+                    ..Default::default()
+                },
+                AllocationCreateInfo {
+                    memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
+                        | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
+                    ..Default::default()
+                },
+                self.instances.clone(),
+            )
+            .unwrap();
+        } else {
+            if let Ok(mut mapping) = self.instance_buffer.write() {
+                mapping[..count].copy_from_slice(&self.instances);
+            }
+        }
+    }
+
+    pub fn new(event_loop: &impl HasDisplayHandle, objects: Vec<ObjectData>) -> Renderer {
         let library = VulkanLibrary::new().expect("no local Vulkan library");
         let required_extensions = Surface::required_extensions(&event_loop).unwrap();
         let instance = create_instance(library.clone(), required_extensions);
@@ -97,6 +191,7 @@ impl Renderer {
 
         let device_extensions = DeviceExtensions {
             khr_swapchain: true,
+            khr_draw_indirect_count: true,
             ..DeviceExtensions::empty()
         };
 
@@ -114,13 +209,25 @@ impl Renderer {
             Default::default(),
         ));
 
-        let vertices = [
-            VertexData::new([-0.5, -0.25, 0.0], [0.0, 0.0], [1.0, 0.0, 0.0]),
-            VertexData::new([0.0, 0.5, 0.0], [0.0, 0.0], [1.0, 0.0, 0.0]),
-            VertexData::new([0.25, -0.1, 0.0], [0.0, 0.0], [1.0, 0.0, 0.0]),
-        ];
+        let mut objs = HashMap::new();
+        let mut vertices = Vec::new();
+        let mut mesh_buffer_mapping = HashMap::new();
+        let mut pos = 0;
+        for mut obj in objects {
+            for mut mesh in obj.meshes.drain(..) {
+                let len = mesh.vertices.len();
+                let info = MeshBufferInfo {
+                    first_vertex: pos,
+                    vertex_count: len as u32,
+                };
+                pos += len as u32;
+                vertices.append(&mut mesh.vertices);
+                mesh_buffer_mapping.insert(mesh.id, info);
+            }
+            objs.insert(obj.id, obj);
+        }
 
-        let vertex_buffer = Buffer::from_iter(
+        let vertex_buffer = Buffer::new_slice(
             memory_allocator.clone(),
             BufferCreateInfo {
                 usage: BufferUsage::VERTEX_BUFFER,
@@ -131,19 +238,14 @@ impl Renderer {
                     | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
                 ..Default::default()
             },
-            vertices,
+            1024,
         )
         .unwrap();
-        let mut instances = vec![InstanceData::new([0.0, 0.0, 0.0], 1.0)];
+        let mut instances = vec![];
 
-        let indirect_commands = vec![DrawIndirectCommand {
-            vertex_count: 3,
-            instance_count: 1,
-            first_vertex: 0,
-            first_instance: 0,
-        }];
+        let indirect_commands = vec![];
 
-        let indirect_buffer = Buffer::from_iter(
+        let indirect_buffer = Buffer::new_slice(
             memory_allocator.clone(),
             BufferCreateInfo {
                 usage: BufferUsage::INDIRECT_BUFFER,
@@ -154,11 +256,11 @@ impl Renderer {
                     | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
                 ..Default::default()
             },
-            indirect_commands,
+            1024,
         )
         .unwrap();
 
-        let instance_buffer = Buffer::from_iter(
+        let instance_buffer = Buffer::new_slice(
             memory_allocator.clone(),
             BufferCreateInfo {
                 usage: BufferUsage::VERTEX_BUFFER,
@@ -169,7 +271,8 @@ impl Renderer {
                     | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
                 ..Default::default()
             },
-            instances,
+            1024,
+            //TODO: alle objekte hochladen
         )
         .unwrap();
 
@@ -186,6 +289,12 @@ impl Renderer {
             vertex_buffer: vertex_buffer,
             render_data: None,
             indirect_buffer,
+            instances: instances,
+            indirect_commands: indirect_commands,
+            max_indirect_commands: 0,
+            max_instance_count: 0,
+            objects: objs,
+            mesh_buffer_mapping: mesh_buffer_mapping,
         };
     }
 
@@ -459,7 +568,13 @@ impl ApplicationHandler for Renderer {
                         (self.vertex_buffer.clone(), self.instance_buffer.clone()),
                     )
                     .unwrap();
-                unsafe { builder.draw_indirect(self.indirect_buffer.clone()) }.unwrap();
+                let command_count = self.indirect_commands.len() as u64;
+
+                if command_count > 0 {
+                    let buffer_slice = self.indirect_buffer.clone().slice(0..command_count);
+                    unsafe { builder.draw_indirect(buffer_slice) }.unwrap();
+                } else {
+                }
 
                 builder.end_render_pass(Default::default()).unwrap();
 
