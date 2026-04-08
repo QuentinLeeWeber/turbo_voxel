@@ -1,19 +1,21 @@
-use crate::engine::GameObject;
+use crate::engine::BoundingBox;
+use crate::engine::{GameObject, HitBox};
+use std::char::from_u32;
 use std::collections::HashMap;
 
-struct CoordinateBorders {
-    upper: f32,
+pub struct CoordinateBorders {
     lower: f32,
+    upper: f32,
 }
 
 impl CoordinateBorders {
     pub fn get_middle(&self) -> f32 {
         return (self.upper + self.lower) / 2.;
     }
-    pub fn new(upper: f32, lower: f32) -> Self {
+    pub fn new(lower: f32, upper: f32) -> Self {
         Self {
-            upper: upper,
             lower: lower,
+            upper: upper,
         }
     }
     pub fn from_parent(parent: &CoordinateBorders, lower_half: bool) -> Self {
@@ -28,6 +30,9 @@ impl CoordinateBorders {
                 upper: parent.upper,
             }
         }
+    }
+    pub fn is_within(&self, other: &CoordinateBorders) -> bool {
+        return self.lower >= other.lower && self.upper <= other.upper;
     }
 }
 
@@ -105,6 +110,44 @@ impl PosInParent {
             || *self == PosInParent::X0Y1Z0
             || *self == PosInParent::X1Y1Z0;
     }
+    fn from_bools(in_lower_x_half: bool, in_lower_y_half: bool, in_lower_z_half: bool) -> Self {
+        let mut array_pos = 0;
+        if in_lower_x_half {
+            array_pos += 1;
+        }
+        if in_lower_y_half {
+            array_pos += 2;
+        }
+        if in_lower_z_half {
+            array_pos += 4;
+        }
+        Self::from_u32(array_pos).unwrap()
+    }
+    fn from_u32(array_pos: u32) -> Option<Self> {
+        match array_pos {
+            0 => Some(PosInParent::X0Y0Z0),
+            1 => Some(PosInParent::X1Y0Z0),
+            2 => Some(PosInParent::X0Y1Z0),
+            3 => Some(PosInParent::X1Y1Z0),
+            4 => Some(PosInParent::X0Y0Z1),
+            5 => Some(PosInParent::X1Y0Z1),
+            6 => Some(PosInParent::X0Y1Z1),
+            7 => Some(PosInParent::X1Y1Z1),
+            _ => unreachable!("child array too long"),
+        }
+    }
+    fn get_idx(&self, parent_idx: u64) -> u64 {
+        match *self {
+            PosInParent::X0Y0Z0 => parent_idx * 8 + 1,
+            PosInParent::X1Y0Z0 => parent_idx * 8 + 2,
+            PosInParent::X0Y1Z0 => parent_idx * 8 + 3,
+            PosInParent::X1Y1Z0 => parent_idx * 8 + 4,
+            PosInParent::X0Y0Z1 => parent_idx * 8 + 5,
+            PosInParent::X1Y0Z1 => parent_idx * 8 + 6,
+            PosInParent::X0Y1Z1 => parent_idx * 8 + 7,
+            PosInParent::X1Y1Z1 => parent_idx * 8 + 8,
+        }
+    }
 }
 
 impl OctreeNode {
@@ -116,8 +159,31 @@ impl OctreeNode {
             z: CoordinateBorders::from_parent(&parent.z, pos_in_parent.in_lower_z_half()),
         }
     }
-    pub fn find_fitting_child(&self) -> u64 {
-        return self.index;
+    pub fn find_fitting_child(&self, obj: &HitBox) -> Option<u64> {
+        let bounding_box = obj.get_bounding_box()?;
+
+        let is_within_self = bounding_box.x.is_within(&self.x)
+            && bounding_box.y.is_within(&self.y)
+            && bounding_box.z.is_within(&self.z);
+        if !is_within_self {
+            return None;
+        }
+        let in_lower_x_half = bounding_box.x.is_within(&CoordinateBorders {
+            lower: self.x.lower,
+            upper: self.x.get_middle(),
+        });
+        let in_lower_y_half = bounding_box.y.is_within(&CoordinateBorders {
+            lower: self.y.lower,
+            upper: self.y.get_middle(),
+        });
+        let in_lower_z_half = bounding_box.z.is_within(&CoordinateBorders {
+            lower: self.z.lower,
+            upper: self.z.get_middle(),
+        });
+        return Some(
+            PosInParent::from_bools(in_lower_x_half, in_lower_y_half, in_lower_z_half)
+                .get_idx(self.index),
+        );
     }
     pub fn get_idx_parent(idx: u64) -> Option<u64> {
         if idx != 0 {
@@ -143,17 +209,7 @@ impl OctreeNode {
             }
             arr_pos += 1;
         }
-        match arr_pos {
-            0 => Some(PosInParent::X0Y0Z0),
-            1 => Some(PosInParent::X1Y0Z0),
-            2 => Some(PosInParent::X0Y1Z0),
-            3 => Some(PosInParent::X1Y1Z0),
-            4 => Some(PosInParent::X0Y0Z1),
-            5 => Some(PosInParent::X1Y0Z1),
-            6 => Some(PosInParent::X0Y1Z1),
-            7 => Some(PosInParent::X1Y1Z1),
-            _ => unreachable!("child array too long"),
-        }
+        PosInParent::from_u32(arr_pos)
     }
 }
 

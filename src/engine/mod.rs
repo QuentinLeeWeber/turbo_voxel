@@ -9,6 +9,7 @@ use winit::{
 
 mod marching_cubes;
 mod marching_cubes_data;
+mod physics;
 pub mod renderer;
 mod scene;
 pub mod world_gen;
@@ -37,19 +38,56 @@ pub struct Chunk {
     pub amount: [[[f32; CHUNK_WIDTH]; CHUNK_WIDTH]; CHUNK_WIDTH],
 }
 
+use physics::CoordinateBorders;
+
 struct Transform {
     pos: [f32; 3],
     rot: [f32; 3],
 }
 
+pub struct BoundingBox {
+    x: CoordinateBorders,
+    y: CoordinateBorders,
+    z: CoordinateBorders,
+}
+
 enum HitBox {
     None,
-    Sphere { radius: f32 },
-    Cube { size: f32 },
+    Sphere { transform: Transform, radius: f32 },
+    Cube { transform: Transform, size: f32 },
+}
+impl HitBox {
+    pub fn get_bounding_box(&self) -> Option<BoundingBox> {
+        match self {
+            HitBox::None => None,
+            HitBox::Sphere { transform, radius } => Some(BoundingBox {
+                x: CoordinateBorders::new(transform.pos[0] - radius, transform.pos[0] + radius),
+                y: CoordinateBorders::new(transform.pos[1] - radius, transform.pos[1] + radius),
+                z: CoordinateBorders::new(transform.pos[2] - radius, transform.pos[2] + radius),
+            }),
+            HitBox::Cube { transform, size } => {
+                let max_dist = (3.0f32).sqrt() / 2. * size;
+                Some(BoundingBox {
+                    x: CoordinateBorders::new(
+                        transform.pos[0] - max_dist,
+                        transform.pos[0] + max_dist,
+                    ),
+                    y: CoordinateBorders::new(
+                        transform.pos[1] - max_dist,
+                        transform.pos[1] + max_dist,
+                    ),
+                    z: CoordinateBorders::new(
+                        transform.pos[2] - max_dist,
+                        transform.pos[2] + max_dist,
+                    ),
+                })
+            }
+        }
+    }
 }
 
 enum Event {
-    SpawObject(Box<dyn GameObject>),
+    SpawnObject(Box<dyn GameObject>),
 }
 
 trait GameObject {
