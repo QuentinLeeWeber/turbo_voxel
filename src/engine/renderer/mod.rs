@@ -51,6 +51,7 @@ mod fs {
         path: "src/engine/renderer/shaders/fragment_shader.glsl"
     );
 }
+mod camera;
 mod object_data;
 pub mod prelude;
 use prelude::*;
