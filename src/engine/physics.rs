@@ -281,5 +281,5 @@ pub fn calculate_collision(entities: &mut HashMap<u32, Box<dyn GameObject>>) -> 
         }
         octree_elements.get_mut(&key).unwrap().push(*index);
     }
-    for 
+    for (idx, vec) in &octree_elements {}
 }
