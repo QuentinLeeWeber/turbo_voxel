@@ -12,6 +12,8 @@ mod scene;
 use renderer::Renderer;
 use scene::Scene;
 
+use crate::engine::renderer::prelude::ObjectData;
+
 struct Transform {
     pos: [f32; 3],
     rot: [f32; 3],
@@ -37,14 +39,14 @@ trait GameObject {
 
 pub struct Engine {
     scene: Scene,
-    renderer: Renderer,
+    pub renderer: Renderer,
 }
 
 impl Engine {
-    pub fn new(event_loop: &winit::event_loop::EventLoop<()>) -> Self {
+    pub fn new(event_loop: &winit::event_loop::EventLoop<()>, objects: Vec<ObjectData>) -> Self {
         Self {
             scene: Scene::new(),
-            renderer: Renderer::new(&event_loop, Vec::new()), // TODO: hier alle Objekte der Szene übergeben.
+            renderer: Renderer::new(&event_loop, objects), // TODO: hier alle Objekte der Szene übergeben.
         }
     }
 

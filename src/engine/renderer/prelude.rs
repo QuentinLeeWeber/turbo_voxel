@@ -53,12 +53,13 @@ pub trait Mesh {
  */
 //TODO: implement loading into and unloading from renderer
 //TODO: implement rendering in renderer
+#[derive(Debug, Clone)]
 pub struct ObjectData {
     pub id: u32,
     pub materials: Vec<MaterialData>,
     pub meshes: Vec<MeshData>,
 }
-
+#[derive(Debug, Clone)]
 pub struct ImageData {
     pub width: u32,
     pub height: u32,
@@ -77,6 +78,7 @@ impl ImageData {
 /*
  * A low level loaded Material
  */
+#[derive(Debug, Clone)]
 pub struct MaterialData {
     pub name: String,
     pub diffuse_texture: ImageData,
@@ -85,11 +87,12 @@ pub struct MaterialData {
 /*
  * a low level loaded Mesh
  */
+#[derive(Debug, Clone)]
 pub struct MeshData {
     pub id: u32,
     pub vertices: Vec<VertexData>,
-    indices: Vec<u32>,
-    material_id: u32,
+    pub indices: Vec<u32>,
+    pub material_id: u32,
 }
 impl MeshData {
     pub fn new(
@@ -109,7 +112,7 @@ impl MeshData {
 /*
  * a low level Vertex for rendering
  */
-#[derive(BufferContents, Vertex)]
+#[derive(BufferContents, Vertex, Debug, Clone, Copy)]
 #[repr(C)]
 pub struct VertexData {
     #[format(R32G32B32_SFLOAT)]

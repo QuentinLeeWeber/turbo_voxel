@@ -52,7 +52,7 @@ mod fs {
     );
 }
 mod object_data;
-mod prelude;
+pub mod prelude;
 use prelude::*;
 
 pub struct RenderData {
@@ -196,6 +196,11 @@ impl Renderer {
             device_extensions,
         );
 
+        let supported_features = physical_device.supported_features();
+        if !supported_features.multi_draw_indirect {
+            panic!("Selected GPU does not support multi_draw_indirect");
+        }
+
         let queue = queues.next().unwrap();
 
         let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
@@ -208,8 +213,8 @@ impl Renderer {
         let mut vertices = Vec::new();
         let mut mesh_buffer_mapping = HashMap::new();
         let mut pos = 0;
-        for mut obj in objects {
-            for mut mesh in obj.meshes.drain(..) {
+        for obj in objects {
+            for mut mesh in obj.clone().meshes.drain(..) {
                 let len = mesh.vertices.len();
                 let info = MeshBufferInfo {
                     first_vertex: pos,
@@ -219,10 +224,13 @@ impl Renderer {
                 vertices.append(&mut mesh.vertices);
                 mesh_buffer_mapping.insert(mesh.id, info);
             }
-            objs.insert(obj.id, obj);
+            objs.insert(obj.id, obj.clone());
+        }
+        if vertices.len() == 0 {
+            unreachable!("Empty vertex array given to renderer");
         }
 
-        let vertex_buffer = Buffer::new_slice(
+        let vertex_buffer = Buffer::from_iter(
             memory_allocator.clone(),
             BufferCreateInfo {
                 usage: BufferUsage::VERTEX_BUFFER,
@@ -233,7 +241,7 @@ impl Renderer {
                     | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
                 ..Default::default()
             },
-            1024,
+            vertices,
         )
         .unwrap();
         let mut instances = vec![];
@@ -286,8 +294,8 @@ impl Renderer {
             indirect_buffer,
             instances: instances,
             indirect_commands: indirect_commands,
-            max_indirect_commands: 0,
-            max_instance_count: 0,
+            max_indirect_commands: 1024,
+            max_instance_count: 1024,
             objects: objs,
             mesh_buffer_mapping: mesh_buffer_mapping,
         };
