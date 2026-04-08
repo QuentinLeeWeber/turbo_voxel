@@ -1,6 +1,7 @@
 mod engine;
 
 use cgmath::Deg;
+use cgmath::InnerSpace;
 use cgmath::Quaternion;
 use cgmath::Rotation3;
 use engine::Engine;
@@ -11,30 +12,30 @@ use winit::{event_loop::EventLoop, platform::x11::EventLoopBuilderExtX11};
 fn main() {
     let event_loop = EventLoop::builder().with_any_thread(true).build().unwrap();
     let vertices = vec![
-        VertexData::new([-0.5, -0.5, 0.5], [0.0, 0.0], [0.0, 0.0, 1.0]), // 0
-        VertexData::new([0.5, -0.5, 0.5], [1.0, 0.0], [0.0, 0.0, 1.0]),  // 1
-        VertexData::new([0.5, 0.5, 0.5], [1.0, 1.0], [0.0, 0.0, 1.0]),   // 2
-        VertexData::new([-0.5, 0.5, 0.5], [0.0, 1.0], [0.0, 0.0, 1.0]),  // 3
-        VertexData::new([0.5, -0.5, -0.5], [0.0, 0.0], [0.0, 0.0, -1.0]), // 4
-        VertexData::new([-0.5, -0.5, -0.5], [1.0, 0.0], [0.0, 0.0, -1.0]), // 5
-        VertexData::new([-0.5, 0.5, -0.5], [1.0, 1.0], [0.0, 0.0, -1.0]), // 6
-        VertexData::new([0.5, 0.5, -0.5], [0.0, 1.0], [0.0, 0.0, -1.0]), // 7
-        VertexData::new([-0.5, 0.5, 0.5], [0.0, 0.0], [0.0, 1.0, 0.0]),  // 8
-        VertexData::new([0.5, 0.5, 0.5], [1.0, 0.0], [0.0, 1.0, 0.0]),   // 9
-        VertexData::new([0.5, 0.5, -0.5], [1.0, 1.0], [0.0, 1.0, 0.0]),  // 10
-        VertexData::new([-0.5, 0.5, -0.5], [0.0, 1.0], [0.0, 1.0, 0.0]), // 11
-        VertexData::new([-0.5, -0.5, -0.5], [0.0, 0.0], [0.0, -1.0, 0.0]), // 12
-        VertexData::new([0.5, -0.5, -0.5], [1.0, 0.0], [0.0, -1.0, 0.0]), // 13
-        VertexData::new([0.5, -0.5, 0.5], [1.0, 1.0], [0.0, -1.0, 0.0]), // 14
-        VertexData::new([-0.5, -0.5, 0.5], [0.0, 1.0], [0.0, -1.0, 0.0]), // 15
-        VertexData::new([0.5, -0.5, 0.5], [0.0, 0.0], [1.0, 0.0, 0.0]),  // 16
-        VertexData::new([0.5, -0.5, -0.5], [1.0, 0.0], [1.0, 0.0, 0.0]), // 17
-        VertexData::new([0.5, 0.5, -0.5], [1.0, 1.0], [1.0, 0.0, 0.0]),  // 18
-        VertexData::new([0.5, 0.5, 0.5], [0.0, 1.0], [1.0, 0.0, 0.0]),   // 19
-        VertexData::new([-0.5, -0.5, -0.5], [0.0, 0.0], [-1.0, 0.0, 0.0]), // 20
-        VertexData::new([-0.5, -0.5, 0.5], [1.0, 0.0], [-1.0, 0.0, 0.0]), // 21
-        VertexData::new([-0.5, 0.5, 0.5], [1.0, 1.0], [-1.0, 0.0, 0.0]), // 22
-        VertexData::new([-0.5, 0.5, -0.5], [0.0, 1.0], [-1.0, 0.0, 0.0]), // 23
+        VertexData::new([-0.5, -0.5, 0.5], [0.0, 0.0, 1.0]), // 0
+        VertexData::new([0.5, -0.5, 0.5], [0.0, 0.0, 1.0]),  // 1
+        VertexData::new([0.5, 0.5, 0.5], [0.0, 0.0, 1.0]),   // 2
+        VertexData::new([-0.5, 0.5, 0.5], [0.0, 0.0, 1.0]),  // 3
+        VertexData::new([0.5, -0.5, -0.5], [0.0, 0.0, -1.0]), // 4
+        VertexData::new([-0.5, -0.5, -0.5], [0.0, 0.0, -1.0]), // 5
+        VertexData::new([-0.5, 0.5, -0.5], [0.0, 0.0, -1.0]), // 6
+        VertexData::new([0.5, 0.5, -0.5], [0.0, 0.0, -1.0]), // 7
+        VertexData::new([-0.5, 0.5, 0.5], [0.0, 1.0, 0.0]),  // 8
+        VertexData::new([0.5, 0.5, 0.5], [0.0, 1.0, 0.0]),   // 9
+        VertexData::new([0.5, 0.5, -0.5], [0.0, 1.0, 0.0]),  // 10
+        VertexData::new([-0.5, 0.5, -0.5], [0.0, 1.0, 0.0]), // 11
+        VertexData::new([-0.5, -0.5, -0.5], [0.0, -1.0, 0.0]), // 12
+        VertexData::new([0.5, -0.5, -0.5], [0.0, -1.0, 0.0]), // 13
+        VertexData::new([0.5, -0.5, 0.5], [0.0, -1.0, 0.0]), // 14
+        VertexData::new([-0.5, -0.5, 0.5], [0.0, -1.0, 0.0]), // 15
+        VertexData::new([0.5, -0.5, 0.5], [1.0, 0.0, 0.0]),  // 16
+        VertexData::new([0.5, -0.5, -0.5], [1.0, 0.0, 0.0]), // 17
+        VertexData::new([0.5, 0.5, -0.5], [1.0, 0.0, 0.0]),  // 18
+        VertexData::new([0.5, 0.5, 0.5], [1.0, 0.0, 0.0]),   // 19
+        VertexData::new([-0.5, -0.5, -0.5], [-1.0, 0.0, 0.0]), // 20
+        VertexData::new([-0.5, -0.5, 0.5], [-1.0, 0.0, 0.0]), // 21
+        VertexData::new([-0.5, 0.5, 0.5], [-1.0, 0.0, 0.0]), // 22
+        VertexData::new([-0.5, 0.5, -0.5], [-1.0, 0.0, 0.0]), // 23
     ];
 
     let indices = vec![
@@ -57,13 +58,14 @@ fn main() {
         }],
     }];
     let mut engine = Engine::new(&event_loop, objects); //TODO: hier alle Objekte der Szene übergeben.
+    let axis = cgmath::Vector3::new(0.5, 0.5, 0.1).normalize();
     engine.renderer.add_object_instance(
         1,
         InstanceData::new(
-            cgmath::Vector3::new(0.0, 0.0, 0.0),
-            Quaternion::from_angle_x(Deg(10.0)),
+            cgmath::Vector3::new(-0.1, 0.3, -0.02),
+            Quaternion::from_axis_angle(axis, Deg(10.0)),
         ),
     );
-    event_loop.set_control_flow(winit::event_loop::ControlFlow::Wait);
+    event_loop.set_control_flow(winit::event_loop::ControlFlow::Poll);
     event_loop.run_app(&mut engine).unwrap();
 }

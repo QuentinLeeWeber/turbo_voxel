@@ -118,16 +118,13 @@ impl MeshData {
 pub struct VertexData {
     #[format(R32G32B32_SFLOAT)]
     position: [f32; 3],
-    #[format(R32G32_SFLOAT)]
-    pub tex_coords: [f32; 2],
     #[format(R32G32B32_SFLOAT)]
     pub normal: [f32; 3],
 }
 impl VertexData {
-    pub fn new(pos: [f32; 3], tex_coords: [f32; 2], normal: [f32; 3]) -> VertexData {
+    pub fn new(pos: [f32; 3], normal: [f32; 3]) -> VertexData {
         return VertexData {
             position: pos,
-            tex_coords: tex_coords,
             normal: normal,
         };
     }
