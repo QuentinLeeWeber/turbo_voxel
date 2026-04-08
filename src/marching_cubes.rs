@@ -17,13 +17,13 @@ impl Voxels {
 const CHUNK_WIDTH: usize = 16;    // x
 
 pub struct Chunk {
-    pub pos: [usize; 3],
+    pub pos: [i32; 3],
     pub voxels: [[[f32; CHUNK_WIDTH]; CHUNK_WIDTH]; CHUNK_WIDTH],
 }
 
 impl Chunk {
     pub fn new (x: i32, y: i32, z: i32) -> Self {
-        Self { pos: [ 0,  0,  0], voxels: [[[0.0; CHUNK_WIDTH]; CHUNK_WIDTH]; CHUNK_WIDTH] }
+        Self { pos: [ x,  y,  z], voxels: [[[0.0; CHUNK_WIDTH]; CHUNK_WIDTH]; CHUNK_WIDTH] }
     }
 
     pub fn get_voxel (&self, x: usize, y: usize, z: usize) -> f32 {
@@ -47,7 +47,12 @@ impl Chunk {
         return idx;
     }
 
-    fn add_point(&self, mesh: &mut Mesh, base: [f32; 3], offset: [f32; 3]) -> usize {
+    fn add_point(&self, mesh: &mut Mesh, base: [f32; 3], offset: [f32; 3], hash: [isize; 4]) -> usize {
+        if mesh.hashed_points.contains_key(&hash) {
+            return mesh.hashed_points[&hash];
+        }
+
+
         let idx = mesh.vertexes.len();
         let p = [
             base[0] + offset[0],
@@ -56,15 +61,16 @@ impl Chunk {
         ];
         let vertex = Vertex::from_pos(p);
 
+        mesh.hashed_points.insert(hash, idx);
         mesh.vertexes.push(vertex);
 
         return idx;
     }
 
-    fn add_triangle (&self, mesh: &mut Mesh, base: [f32; 3], offset: [[f32; 3]; 3]) {
-        let p1 = self.add_point(mesh, base, offset[0]);
-        let p2 = self.add_point(mesh, base, offset[1]);
-        let p3 = self.add_point(mesh, base, offset[2]);
+    fn add_triangle (&self, mesh: &mut Mesh, base: [f32; 3], offset: [[f32; 3]; 3], hashes: [[isize; 4]; 3]) {
+        let p1 = self.add_point(mesh, base, offset[0], hashes[0]);
+        let p2 = self.add_point(mesh, base, offset[1], hashes[1]);
+        let p3 = self.add_point(mesh, base, offset[2], hashes[2]);
 
         let triangle = Triangle::from_idxs([p1, p2, p3]);
 
@@ -81,30 +87,38 @@ impl Chunk {
                     let idx = self.get_table_idx(x, y, z);
                     let case = &triangle_table[idx as usize];
 
-                    if case.count > 0 {
-                        for triangle_idx in 0..case.count {
-                            let edges = Vec3::<i8>{
-                                x: case.edges[(triangle_idx*3 + 0) as usize],
-                                y: case.edges[(triangle_idx*3 + 1) as usize],
-                                z: case.edges[(triangle_idx*3 + 2) as usize],
-                            };
+                    if case.count == 0 {
+                        continue;
+                    }
+                    for triangle_idx in 0..case.count {
+                        let edges = [
+                            case.edges[(triangle_idx*3 + 0) as usize],
+                            case.edges[(triangle_idx*3 + 1) as usize],
+                            case.edges[(triangle_idx*3 + 2) as usize],
+                        ];
 
-                            let points = [
-                                edge_idx_to_point_coord(edges.x, -1.0, 1.0),
-                                edge_idx_to_point_coord(edges.y, -1.0, 1.0),
-                                edge_idx_to_point_coord(edges.z, -1.0, 1.0),
-                            ];
+                        let points = [
+                            edge_idx_to_point_coord(edges[0], -1.0, 1.0),
+                            edge_idx_to_point_coord(edges[1], -1.0, 1.0),
+                            edge_idx_to_point_coord(edges[2], -1.0, 1.0),
+                        ];
 
-                            self.add_triangle(
-                                &mut mesh,
-                                [
-                                    (x + self.pos[0]) as f32,
-                                    (y + self.pos[1]) as f32,
-                                    (z + self.pos[0]) as f32,
-                                ],
-                                points
-                            );
-                        }
+                        let hashes = [
+                            edge_idx_to_point_hash(edges[0], self.pos, [x, y, z]),
+                            edge_idx_to_point_hash(edges[1], self.pos, [x, y, z]),
+                            edge_idx_to_point_hash(edges[2], self.pos, [x, y, z]),
+                        ];
+
+                        self.add_triangle(
+                            &mut mesh,
+                            [
+                                ((x as i32) + self.pos[0]) as f32,
+                                ((y as i32) + self.pos[1]) as f32,
+                                ((z as i32) + self.pos[2]) as f32,
+                            ],
+                            points,
+                            hashes
+                        );
                     }
                 }
             }
@@ -115,6 +129,15 @@ impl Chunk {
 
         return mesh;
     }
+}
+
+pub fn edge_idx_to_point_hash(idx: i8, pos: [i32; 3], offset: [usize; 3]) -> [isize; 4] {
+    let mut hash = edge_hashmap_data[idx as usize];
+    hash[0] += (pos[0] as isize) * (CHUNK_WIDTH as isize) + (offset[0] as isize);
+    hash[1] += (pos[1] as isize) * (CHUNK_WIDTH as isize) + (offset[1] as isize);
+    hash[2] += (pos[2] as isize) * (CHUNK_WIDTH as isize) + (offset[2] as isize);
+
+    return hash;
 }
 
 pub fn edge_idx_to_point_coord(idx: i8, v1: f32, v2: f32) -> [f32; 3] {
@@ -131,20 +154,13 @@ pub fn edge_idx_to_point_coord(idx: i8, v1: f32, v2: f32) -> [f32; 3] {
 
 
 #[derive(Debug)]
-pub struct Vec3<T> {
-    pub x: T,
-    pub y: T,
-    pub z: T,
-}
-
-#[derive(Debug)]
 pub struct Vertex {
-    pub pos: Vec3<f32>,
+    pub pos: [f32; 3],
 }
 
 impl Vertex {
     pub fn from_pos (pos: [f32; 3]) -> Self {
-        Self { pos: Vec3::<f32>{x: pos[0], y: pos[1], z: pos[2]} }
+        Self { pos: pos }
     }
 }
 
@@ -163,7 +179,7 @@ impl Triangle {
 pub struct Mesh {
     pub vertexes: Vec<Vertex>,
     pub triangles: Vec<Triangle>,
-    pub hashed_points: HashMap<[usize; 4], usize>,
+    pub hashed_points: HashMap<[isize; 4], usize>,
 }
 
 impl Mesh {
