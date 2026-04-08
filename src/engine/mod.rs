@@ -53,8 +53,19 @@ pub struct BoundingBox {
 
 enum HitBox {
     None,
-    Sphere { transform: Transform, radius: f32 },
-    Cube { transform: Transform, size: f32 },
+    Sphere {
+        transform: Transform,
+        radius: f32,
+    },
+    Cube {
+        transform: Transform,
+        size: f32,
+    },
+    Triangle {
+        point1: [f32; 3],
+        point2: [f32; 3],
+        point3: [f32; 3],
+    },
 }
 impl HitBox {
     pub fn get_bounding_box(&self) -> Option<BoundingBox> {
@@ -80,6 +91,23 @@ impl HitBox {
                         transform.pos[2] - max_dist,
                         transform.pos[2] + max_dist,
                     ),
+                })
+            }
+            HitBox::Triangle {
+                point1,
+                point2,
+                point3,
+            } => {
+                let min_x = point1[0].min(point2[0].min(point3[0]));
+                let max_x = point1[0].max(point2[0].max(point3[0]));
+                let min_y = point1[1].min(point2[1].min(point3[1]));
+                let max_y = point1[1].max(point2[1].max(point3[1]));
+                let min_z = point1[2].min(point2[2].min(point3[2]));
+                let max_z = point1[2].max(point2[2].max(point3[2]));
+                Some(BoundingBox {
+                    x: CoordinateBorders::new(min_x, max_x),
+                    y: CoordinateBorders::new(min_y, max_y),
+                    z: CoordinateBorders::new(min_z, max_z),
                 })
             }
         }
