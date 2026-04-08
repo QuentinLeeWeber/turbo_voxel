@@ -237,70 +237,13 @@ impl Renderer {
             unreachable!("Empty vertex array given to renderer");
         }
 
-        let vertex_buffer = Buffer::from_iter(
-            memory_allocator.clone(),
-            BufferCreateInfo {
-                usage: BufferUsage::VERTEX_BUFFER,
-                ..Default::default()
-            },
-            AllocationCreateInfo {
-                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
-                    | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
-                ..Default::default()
-            },
-            vertices,
-        )
-        .unwrap();
-
-        let index_buffer = Buffer::from_iter(
-            memory_allocator.clone(),
-            BufferCreateInfo {
-                usage: BufferUsage::INDEX_BUFFER,
-                ..Default::default()
-            },
-            AllocationCreateInfo {
-                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
-                    | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
-                ..Default::default()
-            },
-            indices,
-        )
-        .expect("failed to create index buffer");
-
         let instances = vec![];
-
         let indirect_commands = vec![];
 
-        let indirect_buffer = Buffer::new_slice(
-            memory_allocator.clone(),
-            BufferCreateInfo {
-                usage: BufferUsage::INDIRECT_BUFFER,
-                ..Default::default()
-            },
-            AllocationCreateInfo {
-                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
-                    | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
-                ..Default::default()
-            },
-            1024,
-        )
-        .unwrap();
-
-        let instance_buffer = Buffer::new_slice(
-            memory_allocator.clone(),
-            BufferCreateInfo {
-                usage: BufferUsage::VERTEX_BUFFER,
-                ..Default::default()
-            },
-            AllocationCreateInfo {
-                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
-                    | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
-                ..Default::default()
-            },
-            1024,
-            //TODO: alle objekte hochladen
-        )
-        .unwrap();
+        let vertex_buffer = create_vertex_buffer(&memory_allocator, vertices);
+        let index_buffer = create_index_buffer(&memory_allocator, indices);
+        let indirect_buffer = create_indirect_buffer(&memory_allocator);
+        let instance_buffer = create_instance_buffer(&memory_allocator);
 
         return Renderer {
             library,
@@ -561,6 +504,105 @@ impl Renderer {
             viewport,
         })
     }
+}
+
+fn create_instance_buffer(
+    memory_allocator: &Arc<
+        vulkano::memory::allocator::GenericMemoryAllocator<
+            vulkano::memory::allocator::FreeListAllocator,
+        >,
+    >,
+) -> Subbuffer<[InstanceData]> {
+    let instance_buffer = Buffer::new_slice(
+        memory_allocator.clone(),
+        BufferCreateInfo {
+            usage: BufferUsage::VERTEX_BUFFER,
+            ..Default::default()
+        },
+        AllocationCreateInfo {
+            memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
+                | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
+            ..Default::default()
+        },
+        1024,
+        //TODO: alle objekte hochladen
+    )
+    .unwrap();
+    instance_buffer
+}
+
+fn create_indirect_buffer(
+    memory_allocator: &Arc<
+        vulkano::memory::allocator::GenericMemoryAllocator<
+            vulkano::memory::allocator::FreeListAllocator,
+        >,
+    >,
+) -> Subbuffer<[DrawIndexedIndirectCommand]> {
+    let indirect_buffer = Buffer::new_slice(
+        memory_allocator.clone(),
+        BufferCreateInfo {
+            usage: BufferUsage::INDIRECT_BUFFER,
+            ..Default::default()
+        },
+        AllocationCreateInfo {
+            memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
+                | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
+            ..Default::default()
+        },
+        1024,
+    )
+    .unwrap();
+    indirect_buffer
+}
+
+fn create_index_buffer(
+    memory_allocator: &Arc<
+        vulkano::memory::allocator::GenericMemoryAllocator<
+            vulkano::memory::allocator::FreeListAllocator,
+        >,
+    >,
+    indices: Vec<u32>,
+) -> Subbuffer<[u32]> {
+    let index_buffer = Buffer::from_iter(
+        memory_allocator.clone(),
+        BufferCreateInfo {
+            usage: BufferUsage::INDEX_BUFFER,
+            ..Default::default()
+        },
+        AllocationCreateInfo {
+            memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
+                | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
+            ..Default::default()
+        },
+        indices,
+    )
+    .expect("failed to create index buffer");
+    index_buffer
+}
+
+fn create_vertex_buffer(
+    memory_allocator: &Arc<
+        vulkano::memory::allocator::GenericMemoryAllocator<
+            vulkano::memory::allocator::FreeListAllocator,
+        >,
+    >,
+    vertices: Vec<VertexData>,
+) -> Subbuffer<[VertexData]> {
+    let vertex_buffer = Buffer::from_iter(
+        memory_allocator.clone(),
+        BufferCreateInfo {
+            usage: BufferUsage::VERTEX_BUFFER,
+            ..Default::default()
+        },
+        AllocationCreateInfo {
+            memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
+                | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
+            ..Default::default()
+        },
+        vertices,
+    )
+    .unwrap();
+    vertex_buffer
 }
 
 fn create_device(
