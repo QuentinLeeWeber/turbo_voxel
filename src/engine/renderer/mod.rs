@@ -261,7 +261,7 @@ impl Renderer {
 
         let camera = Camera {
             position: Point3::new(0.0, 0.0, 0.0),
-            yaw: Deg(-90.0).into(),
+            yaw: Deg(90.0).into(),
             pitch: Deg(0.0).into(),
         };
         let camera_uniform = vs::Camera {

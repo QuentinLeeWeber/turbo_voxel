@@ -1,3 +1,4 @@
+use cgmath::{Matrix3, Matrix4};
 use std::sync::Arc;
 use vulkano::buffer::Subbuffer;
 
@@ -135,16 +136,17 @@ impl VertexData {
 #[derive(BufferContents, Vertex, Copy, Clone)]
 #[repr(C)]
 pub struct InstanceData {
-    #[format(R32G32B32_SFLOAT)]
-    position_offset: [f32; 3],
-    #[format(R32_SFLOAT)]
-    scale: f32,
+    // A 2D array maps perfectly to a mat4 in GLSL and automatically
+    // consumes locations 1, 2, 3, and 4.
+    #[format(R32G32B32A32_SFLOAT)]
+    pub model_mat: [[f32; 4]; 4],
 }
+
 impl InstanceData {
-    pub fn new(pos: [f32; 3], scale: f32) -> InstanceData {
+    pub fn new(position: cgmath::Vector3<f32>, rotation: cgmath::Quaternion<f32>) -> InstanceData {
+        let model_mat = Matrix4::from_translation(position) * Matrix4::from(rotation);
         return InstanceData {
-            position_offset: pos,
-            scale: scale,
+            model_mat: model_mat.into(),
         };
     }
 }
