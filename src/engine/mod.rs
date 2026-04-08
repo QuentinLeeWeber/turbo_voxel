@@ -1,5 +1,16 @@
+use std::sync::Arc;
+use winit::{
+    application::ApplicationHandler,
+    event::WindowEvent,
+    event_loop::ActiveEventLoop,
+    window::{Window, WindowId},
+};
+
 pub mod renderer;
 mod scene;
+
+use renderer::Renderer;
+use scene::Scene;
 
 struct Transform {
     pos: [f32; 3],
@@ -24,6 +35,46 @@ trait GameObject {
     fn notify(&mut self) -> Vec<Event>;
 }
 
-struct Engine {
-    scene: scene::Scene,
+pub struct Engine {
+    scene: Scene,
+    renderer: Renderer,
+}
+
+impl Engine {
+    pub fn new(event_loop: &winit::event_loop::EventLoop<()>) -> Self {
+        Self {
+            scene: Scene::new(),
+            renderer: Renderer::new(&event_loop),
+        }
+    }
+
+    fn update(&mut self) {}
+}
+
+impl ApplicationHandler for Engine {
+    fn resumed(&mut self, event_loop: &ActiveEventLoop) {
+        let window = Arc::new(
+            event_loop
+                .create_window(Window::default_attributes())
+                .unwrap(),
+        );
+        self.renderer.resize(window);
+    }
+
+    fn window_event(&mut self, event_loop: &ActiveEventLoop, _: WindowId, event: WindowEvent) {
+        match event {
+            WindowEvent::CloseRequested => {
+                println!("The close button was pressed; stopping");
+                event_loop.exit();
+            }
+            WindowEvent::Resized(_) => {
+                self.renderer.update_screen_size();
+            }
+            WindowEvent::RedrawRequested => {
+                self.update();
+                self.renderer.render();
+            }
+            _ => (),
+        }
+    }
 }

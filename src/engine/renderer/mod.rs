@@ -34,13 +34,8 @@ use vulkano::{
     },
     render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass},
 };
-use winit::application::ApplicationHandler;
-use winit::event::WindowEvent;
 use winit::raw_window_handle::HasDisplayHandle;
-use winit::{
-    event_loop::ActiveEventLoop,
-    window::{Window, WindowId},
-};
+use winit::window::Window;
 
 mod vs {
     vulkano_shaders::shader!(
@@ -245,73 +240,109 @@ impl Renderer {
         };
         pipeline
     }
-}
 
-fn create_device(
-    physical_device: Arc<PhysicalDevice>,
-    queue_family_index: u32,
-    device_extensions: DeviceExtensions,
-) -> (Arc<Device>, impl ExactSizeIterator<Item = Arc<Queue>>) {
-    let (device, mut queues) = Device::new(
-        physical_device.clone(),
-        DeviceCreateInfo {
-            queue_create_infos: vec![QueueCreateInfo {
-                queue_family_index,
-                ..Default::default()
-            }],
-            enabled_extensions: device_extensions, // new
-            ..Default::default()
-        },
-    )
-    .expect("failed to create device");
-    (device, queues)
-}
+    pub fn update_screen_size(&mut self) {
+        let data = self.render_data.as_mut().unwrap();
+        let window_size = data.window.as_ref().inner_size();
+        let (new_swapchain, new_images) = data
+            .swapchain
+            .recreate(SwapchainCreateInfo {
+                image_extent: window_size.into(),
+                ..data.swapchain.as_ref().create_info()
+            })
+            .expect("failed to recreate swapchain");
+        data.swapchain = new_swapchain;
+        data.framebuffers = generate_framebuffers(new_images, data.render_pass.clone());
+        data.viewport.extent = window_size.into();
+        data.recreate_swapchain = false;
+    }
 
-fn create_queue_family_index(physical_device: Arc<PhysicalDevice>) -> u32 {
-    let queue_family_index = physical_device
-        .queue_family_properties()
-        .iter()
-        .position(|queue_family_properties| {
-            queue_family_properties
-                .queue_flags
-                .contains(QueueFlags::GRAPHICS)
-        })
-        .expect("couldn't find a graphical queue family") as u32;
-    queue_family_index
-}
+    pub fn render(&mut self) {
+        let data = self.render_data.as_mut().unwrap();
+        let window_size = data.window.as_ref().inner_size();
 
-fn create_physical_device(instance: Arc<Instance>) -> Arc<PhysicalDevice> {
-    let physical_device = instance
-        .enumerate_physical_devices()
-        .expect("could not enumerate enumerate devices")
-        .next()
-        .expect("no devices available");
-    physical_device
-}
+        if window_size.width == 0 || window_size.height == 0 {
+            return;
+        }
 
-fn create_instance(
-    library: Arc<VulkanLibrary>,
-    required_extensions: vulkano::instance::InstanceExtensions,
-) -> Arc<Instance> {
-    let instance = Instance::new(
-        library.clone(),
-        InstanceCreateInfo {
-            flags: InstanceCreateFlags::ENUMERATE_PORTABILITY,
-            enabled_extensions: required_extensions,
-            ..Default::default()
-        },
-    )
-    .expect("failed to create instance");
-    instance
-}
+        data.previous_frame_end.as_mut().unwrap().cleanup_finished();
 
-impl ApplicationHandler for Renderer {
-    fn resumed(&mut self, event_loop: &ActiveEventLoop) {
-        let window = Arc::new(
-            event_loop
-                .create_window(Window::default_attributes())
-                .unwrap(),
-        );
+        let (image_index, suboptimal, acquire_future) =
+            match acquire_next_image(data.swapchain.clone(), None).map_err(Validated::unwrap) {
+                Ok(r) => r,
+                Err(VulkanError::OutOfDate) => {
+                    data.recreate_swapchain = true;
+                    return;
+                }
+                Err(e) => panic!("failed to acquire next image: {e}"),
+            };
+
+        if suboptimal {
+            data.recreate_swapchain = true;
+        }
+
+        let mut builder = AutoCommandBufferBuilder::primary(
+            self.command_buffer_allocator.clone(),
+            self.queue.queue_family_index(),
+            vulkano::command_buffer::CommandBufferUsage::OneTimeSubmit,
+        )
+        .unwrap();
+
+        builder
+            .begin_render_pass(
+                RenderPassBeginInfo {
+                    clear_values: vec![Some([0.0, 0.0, 1.0, 1.0].into())],
+                    ..RenderPassBeginInfo::framebuffer(
+                        data.framebuffers[image_index as usize].clone(),
+                    )
+                },
+                Default::default(),
+            )
+            .unwrap()
+            .set_viewport(0, [data.viewport.clone()].into_iter().collect())
+            .unwrap()
+            .bind_pipeline_graphics(data.pipeline.clone())
+            .unwrap()
+            // We pass both our lists of vertices here.
+            .bind_vertex_buffers(
+                0,
+                (self.vertex_buffer.clone(), self.instance_buffer.clone()),
+            )
+            .unwrap();
+        unsafe { builder.draw_indirect(self.indirect_buffer.clone()) }.unwrap();
+
+        builder.end_render_pass(Default::default()).unwrap();
+
+        let command_buffer = builder.build().unwrap();
+        let future = data
+            .previous_frame_end
+            .take()
+            .unwrap()
+            .join(acquire_future)
+            .then_execute(self.queue.clone(), command_buffer)
+            .unwrap()
+            .then_swapchain_present(
+                self.queue.clone(),
+                SwapchainPresentInfo::swapchain_image_index(data.swapchain.clone(), image_index),
+            )
+            .then_signal_fence_and_flush();
+
+        match future.map_err(Validated::unwrap) {
+            Ok(future) => {
+                data.previous_frame_end = Some(future.boxed());
+            }
+            Err(VulkanError::OutOfDate) => {
+                data.recreate_swapchain = true;
+                data.previous_frame_end = Some(sync::now(self.device.clone()).boxed());
+            }
+            Err(e) => {
+                println!("failed to flush future: {e}");
+                data.previous_frame_end = Some(sync::now(self.device.clone()).boxed());
+            }
+        }
+    }
+
+    pub fn resize(&mut self, window: Arc<Window>) {
         let surface = Surface::from_window(self.instance.clone(), window.clone()).unwrap();
 
         let (mut swapchain, images) = {
@@ -381,124 +412,64 @@ impl ApplicationHandler for Renderer {
             viewport,
         })
     }
+}
 
-    fn window_event(&mut self, event_loop: &ActiveEventLoop, id: WindowId, event: WindowEvent) {
-        //adapted from https://github.com/vulkano-rs/vulkano/blob/master/examples/instancing
-        let mut data = self.render_data.as_mut().unwrap();
-        match event {
-            WindowEvent::CloseRequested => {
-                println!("The close button was pressed; stopping");
-                event_loop.exit();
-            }
-            WindowEvent::Resized(_) => {
-                data.recreate_swapchain = true;
-            }
-            WindowEvent::RedrawRequested => {
-                let window_size = data.window.as_ref().inner_size();
+fn create_device(
+    physical_device: Arc<PhysicalDevice>,
+    queue_family_index: u32,
+    device_extensions: DeviceExtensions,
+) -> (Arc<Device>, impl ExactSizeIterator<Item = Arc<Queue>>) {
+    let (device, mut queues) = Device::new(
+        physical_device.clone(),
+        DeviceCreateInfo {
+            queue_create_infos: vec![QueueCreateInfo {
+                queue_family_index,
+                ..Default::default()
+            }],
+            enabled_extensions: device_extensions, // new
+            ..Default::default()
+        },
+    )
+    .expect("failed to create device");
+    (device, queues)
+}
 
-                if window_size.width == 0 || window_size.height == 0 {
-                    return;
-                }
-                data.previous_frame_end.as_mut().unwrap().cleanup_finished();
+fn create_queue_family_index(physical_device: Arc<PhysicalDevice>) -> u32 {
+    let queue_family_index = physical_device
+        .queue_family_properties()
+        .iter()
+        .position(|queue_family_properties| {
+            queue_family_properties
+                .queue_flags
+                .contains(QueueFlags::GRAPHICS)
+        })
+        .expect("couldn't find a graphical queue family") as u32;
+    queue_family_index
+}
 
-                if data.recreate_swapchain {
-                    let (new_swapchain, new_images) = data
-                        .swapchain
-                        .recreate(SwapchainCreateInfo {
-                            image_extent: window_size.into(),
-                            ..data.swapchain.as_ref().create_info()
-                        })
-                        .expect("failed to recreate swapchain");
-                    data.swapchain = new_swapchain;
-                    data.framebuffers = generate_framebuffers(new_images, data.render_pass.clone());
-                    data.viewport.extent = window_size.into();
-                    data.recreate_swapchain = false;
-                }
+fn create_physical_device(instance: Arc<Instance>) -> Arc<PhysicalDevice> {
+    let physical_device = instance
+        .enumerate_physical_devices()
+        .expect("could not enumerate enumerate devices")
+        .next()
+        .expect("no devices available");
+    physical_device
+}
 
-                let (image_index, suboptimal, acquire_future) =
-                    match acquire_next_image(data.swapchain.clone(), None)
-                        .map_err(Validated::unwrap)
-                    {
-                        Ok(r) => r,
-                        Err(VulkanError::OutOfDate) => {
-                            data.recreate_swapchain = true;
-                            return;
-                        }
-                        Err(e) => panic!("failed to acquire next image: {e}"),
-                    };
-
-                if suboptimal {
-                    data.recreate_swapchain = true;
-                }
-
-                let mut builder = AutoCommandBufferBuilder::primary(
-                    self.command_buffer_allocator.clone(),
-                    self.queue.queue_family_index(),
-                    vulkano::command_buffer::CommandBufferUsage::OneTimeSubmit,
-                )
-                .unwrap();
-
-                builder
-                    .begin_render_pass(
-                        RenderPassBeginInfo {
-                            clear_values: vec![Some([0.0, 0.0, 1.0, 1.0].into())],
-                            ..RenderPassBeginInfo::framebuffer(
-                                data.framebuffers[image_index as usize].clone(),
-                            )
-                        },
-                        Default::default(),
-                    )
-                    .unwrap()
-                    .set_viewport(0, [data.viewport.clone()].into_iter().collect())
-                    .unwrap()
-                    .bind_pipeline_graphics(data.pipeline.clone())
-                    .unwrap()
-                    // We pass both our lists of vertices here.
-                    .bind_vertex_buffers(
-                        0,
-                        (self.vertex_buffer.clone(), self.instance_buffer.clone()),
-                    )
-                    .unwrap();
-                unsafe { builder.draw_indirect(self.indirect_buffer.clone()) }.unwrap();
-
-                builder.end_render_pass(Default::default()).unwrap();
-
-                let command_buffer = builder.build().unwrap();
-                let future = data
-                    .previous_frame_end
-                    .take()
-                    .unwrap()
-                    .join(acquire_future)
-                    .then_execute(self.queue.clone(), command_buffer)
-                    .unwrap()
-                    .then_swapchain_present(
-                        self.queue.clone(),
-                        SwapchainPresentInfo::swapchain_image_index(
-                            data.swapchain.clone(),
-                            image_index,
-                        ),
-                    )
-                    .then_signal_fence_and_flush();
-
-                match future.map_err(Validated::unwrap) {
-                    Ok(future) => {
-                        data.previous_frame_end = Some(future.boxed());
-                    }
-                    Err(VulkanError::OutOfDate) => {
-                        data.recreate_swapchain = true;
-                        data.previous_frame_end = Some(sync::now(self.device.clone()).boxed());
-                    }
-                    Err(e) => {
-                        println!("failed to flush future: {e}");
-                        data.previous_frame_end = Some(sync::now(self.device.clone()).boxed());
-                    }
-                }
-
-                data.window.request_redraw();
-            }
-            _ => (),
-        }
-    }
+fn create_instance(
+    library: Arc<VulkanLibrary>,
+    required_extensions: vulkano::instance::InstanceExtensions,
+) -> Arc<Instance> {
+    let instance = Instance::new(
+        library.clone(),
+        InstanceCreateInfo {
+            flags: InstanceCreateFlags::ENUMERATE_PORTABILITY,
+            enabled_extensions: required_extensions,
+            ..Default::default()
+        },
+    )
+    .expect("failed to create instance");
+    instance
 }
 
 fn generate_framebuffers(
