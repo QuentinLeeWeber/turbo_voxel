@@ -2,6 +2,7 @@ mod engine;
 mod game_object;
 mod hit_box;
 
+use cgmath::{Deg, Quaternion, Rad, Rotation3};
 use engine::{Engine, renderer::prelude::*};
 use winit::{event_loop::EventLoop, platform::x11::EventLoopBuilderExtX11};
 
@@ -71,8 +72,8 @@ fn main() {
     struct ObjectData {}
     game_object::GameObjectBuilder::<ObjectData>::new(ObjectData {})
         .with_transform(Transform {
-            pos: [0.0, 0.0, 0.0],
-            rot: [90.0, 0.0, 0.0],
+            pos: [0.0, 0.0, 0.0].into(),
+            rot: Quaternion::from_angle_x(Rad::from(Deg(90.0))),
         })
         .with_mesh(mesh.into())
         .build(&mut engine);

@@ -3,12 +3,21 @@ use crate::engine::{
     renderer::{ObjectDataID, prelude::*},
 };
 use crate::hit_box::HitBox;
-use cgmath::{Deg, Quaternion, Rad, Rotation3, Vector3};
+use cgmath::{Deg, Quaternion, Rad, Rotation3, Vector3, Zero};
 
-#[derive(Debug, Default, Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub struct Transform {
-    pub pos: [f32; 3],
-    pub rot: [f32; 3],
+    pub pos: Vector3<f32>,
+    pub rot: Quaternion<f32>,
+}
+
+impl Default for Transform {
+    fn default() -> Self {
+        Self {
+            pos: Vector3::zero(),
+            rot: Quaternion::zero(),
+        }
+    }
 }
 
 pub trait GameObjectTrait {
@@ -100,24 +109,13 @@ impl<T: 'static> GameObjectBuilder<T> {
         self
     }
 
-    pub fn build(self, engine: &mut Engine) {
+    pub fn build(mut self, engine: &mut Engine) {
         let id = engine.game_object_id_count;
         engine.game_object_id_count += 1;
 
-        let quaternion = Quaternion::from_angle_z(Rad::from(Deg(self.transform.rot[2])))
-            * Quaternion::from_angle_y(Rad::from(Deg(self.transform.rot[1])))
-            * Quaternion::from_angle_x(Rad::from(Deg(self.transform.rot[0])));
-
         let object_data = engine.renderer.instantiate_object(
             self.object_data,
-            InstanceData::new(
-                Vector3::new(
-                    self.transform.pos[0],
-                    self.transform.pos[1],
-                    self.transform.pos[2],
-                ),
-                quaternion,
-            ),
+            InstanceData::new(self.transform.pos, self.transform.rot),
         );
 
         engine.add_game_object(Box::new(GameObject {
