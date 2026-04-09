@@ -41,6 +41,7 @@ pub struct Chunk {
 
 use physics::CoordinateBorders;
 
+#[derive(Debug, Default)]
 struct Transform {
     pos: [f32; 3],
     rot: [f32; 3],
@@ -217,10 +218,10 @@ pub struct Engine {
 }
 
 impl Engine {
-    pub fn new(event_loop: &winit::event_loop::EventLoop<()>, objects: Vec<ObjectData>) -> Self {
+    pub fn new(event_loop: &winit::event_loop::EventLoop<()>) -> Self {
         Self {
             scene: HashMap::new(),
-            renderer: Renderer::new(&event_loop, objects), // TODO: hier alle Objekte der Szene übergeben.
+            renderer: Renderer::new(&event_loop), // TODO: hier alle Objekte der Szene übergeben.
         }
     }
 
@@ -231,7 +232,7 @@ impl Engine {
     }
 
     fn add_game_object(&mut self, object: Box<dyn GameObjectTrait>) {
-        self.scene.add_object(object);
+        self.scene.insert(object.get_id(), object);
     }
 }
 

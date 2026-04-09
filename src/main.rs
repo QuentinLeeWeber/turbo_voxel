@@ -12,6 +12,7 @@ use winit::{event_loop::EventLoop, platform::x11::EventLoopBuilderExtX11};
 
 fn main() {
     let event_loop = EventLoop::builder().with_any_thread(true).build().unwrap();
+    /*
     let vertices = vec![
         VertexData::new([-0.5, -0.5, 0.5], [0.0, 0.0, 1.0]), // 0
         VertexData::new([0.5, -0.5, 0.5], [0.0, 0.0, 1.0]),  // 1
@@ -74,10 +75,10 @@ fn main() {
             indices,
             material_id: 0,
         }],
-    }];
-    let mut engine = Engine::new(&event_loop, objects); //TODO: hier alle Objekte der Szene übergeben.
+    }]; */
+    let mut engine = Engine::new(&event_loop); //TODO: hier alle Objekte der Szene übergeben.
     let axis = cgmath::Vector3::new(0.5, 0.5, 0.1).normalize();
-    engine.renderer.add_object_instance(
+    /*engine.renderer.add_object_instance(
         1,
         GPUInstance {
             instance_id: 1,
@@ -86,7 +87,7 @@ fn main() {
                 Quaternion::from_axis_angle(axis, Deg(10.0)),
             ),
         },
-    );
+    );*/
     event_loop.set_control_flow(winit::event_loop::ControlFlow::Poll);
     event_loop.run_app(&mut engine).unwrap();
 }
