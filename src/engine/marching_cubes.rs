@@ -67,28 +67,31 @@ impl Chunk {
     }
 
     pub fn get_voxel(&self, voxels: &Voxels, x: usize, y: usize, z: usize) -> f32 {
-        if (x < CHUNK_WIDTH) && (y < CHUNK_WIDTH) && (z < CHUNK_WIDTH) {
+        // Fast path: coordinates are within this chunk
+        if x < CHUNK_WIDTH && y < CHUNK_WIDTH && z < CHUNK_WIDTH {
             return self.amount[x][y][z];
         }
-        let chunk_x = (x.div(CHUNK_WIDTH) as i32) + self.pos[0];
-        let chunk_y = (y.div(CHUNK_WIDTH) as i32) + self.pos[1];
-        let chunk_z = (z.div(CHUNK_WIDTH) as i32) + self.pos[2];
+
+        // Compute which chunk the coordinates fall into
+        let chunk_x = (x / CHUNK_WIDTH) as i32 + self.pos[0];
+        let chunk_y = (y / CHUNK_WIDTH) as i32 + self.pos[1];
+        let chunk_z = (z / CHUNK_WIDTH) as i32 + self.pos[2];
 
         let idx = [chunk_x, chunk_y, chunk_z];
-        if voxels.chunks.contains_key(&idx) {
-            let chunk = &voxels.chunks[&idx];
-            let new_x = x.rem(CHUNK_WIDTH);
-            let new_y = y.rem(CHUNK_WIDTH);
-            let new_z = z.rem(CHUNK_WIDTH);
 
-            return chunk.get_voxel(voxels, new_x, new_y, new_z);
+        if let Some(chunk) = voxels.chunks.get(&idx) {
+            // Access directly without recursion to avoid stack overflow
+            let lx = x % CHUNK_WIDTH;
+            let ly = y % CHUNK_WIDTH;
+            let lz = z % CHUNK_WIDTH;
+            return chunk.amount[lx][ly][lz];
         }
 
-        let new_x = x.min(CHUNK_WIDTH - 1);
-        let new_y = y.min(CHUNK_WIDTH - 1);
-        let new_z = z.min(CHUNK_WIDTH - 1);
-
-        self.amount[new_x][new_y][new_z]
+        // Neighbour chunk doesn't exist – clamp to this chunk's border
+        let cx = x.min(CHUNK_WIDTH - 1);
+        let cy = y.min(CHUNK_WIDTH - 1);
+        let cz = z.min(CHUNK_WIDTH - 1);
+        self.amount[cx][cy][cz]
     }
 
     pub fn set_voxel(&mut self, x: usize, y: usize, z: usize, val: f32) {

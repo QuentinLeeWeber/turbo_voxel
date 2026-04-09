@@ -3,51 +3,52 @@ const PERLIN_CHUNK_WIDTH: i32 = 4;
 
 use super::{CHUNK_WIDTH, Chunk, Material};
 
+fn alloc_amount() -> Box<[[[f32; CHUNK_WIDTH]; CHUNK_WIDTH]; CHUNK_WIDTH]> {
+    unsafe {
+        let layout = std::alloc::Layout::new::<[[[f32; CHUNK_WIDTH]; CHUNK_WIDTH]; CHUNK_WIDTH]>();
+        let ptr = std::alloc::alloc_zeroed(layout)
+            as *mut [[[f32; CHUNK_WIDTH]; CHUNK_WIDTH]; CHUNK_WIDTH];
+        Box::from_raw(ptr)
+    }
+}
+
+fn alloc_materials() -> Box<[[[Material; CHUNK_WIDTH]; CHUNK_WIDTH]; CHUNK_WIDTH]> {
+    unsafe {
+        let layout =
+            std::alloc::Layout::new::<[[[Material; CHUNK_WIDTH]; CHUNK_WIDTH]; CHUNK_WIDTH]>();
+        let ptr = std::alloc::alloc_zeroed(layout)
+            as *mut [[[Material; CHUNK_WIDTH]; CHUNK_WIDTH]; CHUNK_WIDTH];
+        Box::from_raw(ptr)
+    }
+}
+
 pub fn generate_chunk(x: i32, y: i32, z: i32) -> Chunk {
     println!("generate chunks");
+
     let mut chunk = Chunk {
         pos: [x, y, z],
-        materials: Box::new([[[Material::default(); CHUNK_WIDTH]; CHUNK_WIDTH]; CHUNK_WIDTH]),
-        amount: Box::new([[[0.0f32; CHUNK_WIDTH]; CHUNK_WIDTH]; CHUNK_WIDTH]),
+        materials: alloc_materials(),
+        amount: alloc_amount(),
     };
-
-    //use image::{ImageBuffer, Rgb};
-    //let mut img = ImageBuffer::new(CHUNK_WIDTH as u32, CHUNK_WIDTH as u32);
-
-    /*for x_in in 0..CHUNK_WIDTH {
-        for y_in in 0..CHUNK_WIDTH {
-            let gray = (ridged_noise(x as f32, y as f32, x_in as i32, y_in as i32, 2, 0.5, 1.0)
-                + 1.0)
-                / 2.0
-                * 255.0;
-            img.put_pixel(
-                x_in as u32,
-                y_in as u32,
-                Rgb([gray as u8, gray as u8, gray as u8]),
-            );
-        }
-    }
-
-    img.save("yeet.png").unwrap();*/
 
     let sea_level = 8.0;
     let mut terrain = ridged_noise(x, y);
 
-    for x in 0..CHUNK_WIDTH {
-        for y in 0..CHUNK_WIDTH {
-            terrain[x][y] += sea_level;
+    for xi in 0..CHUNK_WIDTH {
+        for yi in 0..CHUNK_WIDTH {
+            terrain[xi][yi] += sea_level;
 
-            for z in 0..CHUNK_WIDTH {
-                let diff = z as f32 - terrain[x][y];
+            for zi in 0..CHUNK_WIDTH {
+                let diff = zi as f32 - terrain[xi][yi];
                 if diff > 1.0 {
-                    chunk.materials[x][y][z] = Material::default();
-                    chunk.amount[x][y][z] = 0.0;
+                    chunk.materials[xi][yi][zi] = Material::default();
+                    chunk.amount[xi][yi][zi] = 0.0;
                 } else if diff > 0.0 {
-                    chunk.materials[x][y][z] = Material::default();
-                    chunk.amount[x][y][z] = diff;
+                    chunk.materials[xi][yi][zi] = Material::default();
+                    chunk.amount[xi][yi][zi] = diff;
                 } else {
-                    chunk.materials[x][y][z] = Material::default();
-                    chunk.amount[x][y][z] = 1.0;
+                    chunk.materials[xi][yi][zi] = Material::default();
+                    chunk.amount[xi][yi][zi] = 1.0;
                 }
             }
         }
@@ -60,7 +61,12 @@ fn ridged_noise(offset_x: i32, offset_y: i32) -> Box<[[f32; CHUNK_WIDTH]; CHUNK_
     let octaves = 2;
     let lacunarity = 0.5;
     let gain = 1.0;
-    let mut map = Box::new([[0f32; CHUNK_WIDTH]; CHUNK_WIDTH]);
+
+    let mut map = unsafe {
+        let layout = std::alloc::Layout::new::<[[f32; CHUNK_WIDTH]; CHUNK_WIDTH]>();
+        let ptr = std::alloc::alloc_zeroed(layout) as *mut [[f32; CHUNK_WIDTH]; CHUNK_WIDTH];
+        Box::from_raw(ptr)
+    };
 
     let perlin_noise = PerlinNoise::new(PERLIN_SEED, offset_x, offset_y);
 
@@ -91,20 +97,25 @@ fn ridged_noise(offset_x: i32, offset_y: i32) -> Box<[[f32; CHUNK_WIDTH]; CHUNK_
     map
 }
 
+const GRAD_SIZE: usize = CHUNK_WIDTH + 1;
+
 struct PerlinNoise {
-    grads: Box<[[[f32; 2]; CHUNK_WIDTH]; CHUNK_WIDTH]>,
+    grads: Box<[[[f32; 2]; GRAD_SIZE]; GRAD_SIZE]>,
 }
 
 impl PerlinNoise {
     fn new(seed: u32, offset_x: i32, offset_y: i32) -> Self {
-        let mut grads = Box::new([[[0f32; 2]; CHUNK_WIDTH]; CHUNK_WIDTH]);
-        for x in 0..CHUNK_WIDTH {
-            for y in 0..CHUNK_WIDTH {
+        let mut grads = unsafe {
+            let layout = std::alloc::Layout::new::<[[[f32; 2]; GRAD_SIZE]; GRAD_SIZE]>();
+            let ptr = std::alloc::alloc_zeroed(layout) as *mut [[[f32; 2]; GRAD_SIZE]; GRAD_SIZE];
+            Box::from_raw(ptr)
+        };
+
+        for x in 0..GRAD_SIZE {
+            for y in 0..GRAD_SIZE {
                 grads[x][y] = random_grad(x as i32 + offset_x, y as i32 + offset_y, seed);
             }
         }
-
-        println!("grads: {:?}", grads);
 
         Self { grads }
     }
