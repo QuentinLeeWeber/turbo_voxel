@@ -79,13 +79,17 @@ pub struct RenderData {
     surface: Arc<Surface>,
     swapchain: Arc<Swapchain>,
     swapchain_images: Vec<Arc<Image>>,
-    render_pass: Arc<RenderPass>,
+    viewport: Viewport,
     framebuffers: Vec<Arc<Framebuffer>>,
+
+    render_pass: Arc<RenderPass>,
+
     pipeline: Arc<GraphicsPipeline>,
     recreate_swapchain: bool,
     previous_frame_end: Option<Box<dyn GpuFuture>>,
-    viewport: Viewport,
+
     pub camera_uniform_descriptor_set: Arc<DescriptorSet>,
+
     depth_image: Arc<Image>,
     depth_view: Arc<ImageView>,
 }
@@ -99,26 +103,35 @@ pub struct Renderer {
     library: Arc<VulkanLibrary>,
     objects: HashMap<u32, ObjectData>,
     instance: Arc<Instance>,
+
     instances: Vec<GPUInstance>,
+    max_instance_count: usize,
+    instance_buffer: Subbuffer<[InstanceData]>,
+
     indirect_commands: Vec<DrawIndexedIndirectCommand>,
     max_indirect_commands: usize,
-    max_instance_count: usize,
+
     command_buffer_allocator: Arc<StandardCommandBufferAllocator>,
+    memory_allocator: Arc<StandardMemoryAllocator>,
+    descriptor_set_allocator: Arc<StandardDescriptorSetAllocator>,
+
     vertex_buffer: Subbuffer<[VertexData]>,
     index_buffer: Subbuffer<[u32]>,
-    instance_buffer: Subbuffer<[InstanceData]>,
     indirect_buffer: Subbuffer<[DrawIndexedIndirectCommand]>,
+
     physical_device: Arc<PhysicalDevice>,
     device: Arc<Device>,
+
     queue_family_index: u32,
     queue: Arc<Queue>,
-    memory_allocator: Arc<StandardMemoryAllocator>,
-    pub render_data: Option<RenderData>,
+
     mesh_buffer_mapping: HashMap<u32, MeshBufferInfo>,
+
     camera: Camera,
     pub camera_controller: CameraController,
     camera_buffer: Subbuffer<vs::Camera>,
-    descriptor_set_allocator: Arc<StandardDescriptorSetAllocator>,
+
+    pub render_data: Option<RenderData>,
 }
 /*
  *
@@ -144,6 +157,8 @@ impl Renderer {
     }
     /*
      * update a allready present instance and change their transforms
+     * use this to set new positions from simulation
+     * TODO: Batch operation
      */
     pub fn update_object_instance(&mut self, instanz_id: u32, instanz: InstanceData) {
         let ind = self
@@ -319,32 +334,31 @@ impl Renderer {
         Renderer {
             library,
             instance,
-            physical_device,
-            queue_family_index,
-            queue,
-            device,
-            command_buffer_allocator,
-            memory_allocator,
-            instance_buffer,
-            vertex_buffer,
+            physical_device: physical_device,
+            queue_family_index: queue_family_index,
+            queue: queue,
+            device: device,
+            command_buffer_allocator: command_buffer_allocator,
+            memory_allocator: memory_allocator,
+            instance_buffer: instance_buffer,
+            vertex_buffer: vertex_buffer,
             render_data: None,
             indirect_buffer,
-            instances,
-            indirect_commands,
+            instances: instances,
+            indirect_commands: indirect_commands,
             max_indirect_commands: 1024,
             max_instance_count: 1024,
             objects: objs,
-            mesh_buffer_mapping,
-            index_buffer,
-            camera,
-            camera_buffer,
-            descriptor_set_allocator,
+            mesh_buffer_mapping: mesh_buffer_mapping,
+            index_buffer: index_buffer,
+            camera: camera,
+            camera_buffer: camera_buffer,
+            descriptor_set_allocator: descriptor_set_allocator,
             camera_controller: CameraController::new(1.0, 2.0),
         }
     }
 
     fn create_pipeline(&mut self, render_pass: &Arc<RenderPass>) -> Arc<GraphicsPipeline> {
-        
         {
             let vs = vs::load(self.device.clone())
                 .unwrap()
@@ -502,7 +516,7 @@ impl Renderer {
         if command_count > 0 {
             let buffer_slice = self.indirect_buffer.clone().slice(0..command_count);
             unsafe { builder.draw_indexed_indirect(buffer_slice) }.unwrap();
-        } 
+        }
 
         builder.end_render_pass(Default::default()).unwrap();
 
@@ -687,7 +701,6 @@ impl Renderer {
         e[0] = extend[0];
         e[1] = extend[1];
 
-        
         Image::new(
             self.memory_allocator.clone(),
             ImageCreateInfo {
@@ -709,7 +722,6 @@ fn create_instance_buffer(
         >,
     >,
 ) -> Subbuffer<[InstanceData]> {
-    
     Buffer::new_slice(
         memory_allocator.clone(),
         BufferCreateInfo {
@@ -734,7 +746,6 @@ fn create_indirect_buffer(
         >,
     >,
 ) -> Subbuffer<[DrawIndexedIndirectCommand]> {
-    
     Buffer::new_slice(
         memory_allocator.clone(),
         BufferCreateInfo {
@@ -759,7 +770,6 @@ fn create_index_buffer(
     >,
     indices: Vec<u32>,
 ) -> Subbuffer<[u32]> {
-    
     Buffer::from_iter(
         memory_allocator.clone(),
         BufferCreateInfo {
@@ -784,7 +794,6 @@ fn create_vertex_buffer(
     >,
     vertices: Vec<VertexData>,
 ) -> Subbuffer<[VertexData]> {
-    
     Buffer::from_iter(
         memory_allocator.clone(),
         BufferCreateInfo {
@@ -822,7 +831,6 @@ fn create_device(
 }
 
 fn create_queue_family_index(physical_device: Arc<PhysicalDevice>) -> u32 {
-    
     physical_device
         .queue_family_properties()
         .iter()
@@ -835,7 +843,6 @@ fn create_queue_family_index(physical_device: Arc<PhysicalDevice>) -> u32 {
 }
 
 fn create_physical_device(instance: Arc<Instance>) -> Arc<PhysicalDevice> {
-    
     instance
         .enumerate_physical_devices()
         .expect("could not enumerate enumerate devices")
@@ -847,7 +854,6 @@ fn create_instance(
     library: Arc<VulkanLibrary>,
     required_extensions: vulkano::instance::InstanceExtensions,
 ) -> Arc<Instance> {
-    
     Instance::new(
         library.clone(),
         InstanceCreateInfo {
