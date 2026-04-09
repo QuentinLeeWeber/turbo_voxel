@@ -13,10 +13,12 @@ use vulkano::descriptor_set::allocator::{
 use vulkano::descriptor_set::layout::{DescriptorSetLayoutBinding, DescriptorSetLayoutCreateInfo};
 use vulkano::descriptor_set::{DescriptorSet, WriteDescriptorSet};
 use vulkano::device::{Device, DeviceCreateInfo, Queue, QueueCreateInfo};
+use vulkano::format::Format;
 use vulkano::image::view::ImageView;
-use vulkano::image::{Image, ImageUsage};
+use vulkano::image::{Image, ImageCreateInfo, ImageUsage};
 use vulkano::pipeline::Pipeline;
 use vulkano::pipeline::graphics::color_blend::{ColorBlendAttachmentState, ColorBlendState};
+use vulkano::pipeline::graphics::depth_stencil::{DepthState, DepthStencilState};
 use vulkano::pipeline::graphics::input_assembly::InputAssemblyState;
 use vulkano::pipeline::graphics::multisample::MultisampleState;
 use vulkano::pipeline::graphics::rasterization::RasterizationState;
@@ -77,6 +79,8 @@ pub struct RenderData {
     previous_frame_end: Option<Box<dyn GpuFuture>>,
     viewport: Viewport,
     pub camera_uniform_descriptor_set: Arc<DescriptorSet>,
+    depth_image: Arc<Image>,
+    depth_view: Arc<ImageView>,
 }
 struct MeshBufferInfo {
     first_vertex: u32,
@@ -314,7 +318,7 @@ impl Renderer {
             camera: camera,
             camera_buffer: camera_buffer,
             descriptor_set_allocator: descriptor_set_allocator,
-            camera_controller: CameraController::new(1.0, 1.0),
+            camera_controller: CameraController::new(1.0, 2.0),
         };
     }
 
@@ -367,7 +371,14 @@ impl Renderer {
                     // Dynamic state is now usually a set of enum values
                     dynamic_state: [DynamicState::Viewport].into_iter().collect(),
                     subpass: Some(PipelineSubpassType::BeginRenderPass(subpass.clone())),
-                    ..GraphicsPipelineCreateInfo::layout(layout.clone()) // Pass layout here
+                    depth_stencil_state: Some(DepthStencilState {
+                        depth: Some(DepthState {
+                            write_enable: true,
+                            compare_op: vulkano::pipeline::graphics::depth_stencil::CompareOp::Less,
+                        }),
+                        ..Default::default()
+                    }),
+                    ..GraphicsPipelineCreateInfo::layout(layout.clone())
                 },
             )
             .expect("failed to create graphics pipeline")
@@ -376,18 +387,28 @@ impl Renderer {
     }
 
     pub fn update_screen_size(&mut self) {
+        let (new_swapchain, new_images, viewport_extent) = {
+            let data = self.render_data.as_mut().unwrap();
+            let window_size = data.window.inner_size();
+
+            let (new_swapchain, new_images) = data
+                .swapchain
+                .recreate(SwapchainCreateInfo {
+                    image_extent: window_size.into(),
+                    ..data.swapchain.create_info()
+                })
+                .expect("failed to recreate swapchain");
+
+            (new_swapchain, new_images, window_size.into())
+        };
+
+        let depth_image = self.create_depth_buffer(&new_swapchain);
+        let depth_view = ImageView::new_default(depth_image).unwrap();
+
         let data = self.render_data.as_mut().unwrap();
-        let window_size = data.window.as_ref().inner_size();
-        let (new_swapchain, new_images) = data
-            .swapchain
-            .recreate(SwapchainCreateInfo {
-                image_extent: window_size.into(),
-                ..data.swapchain.as_ref().create_info()
-            })
-            .expect("failed to recreate swapchain");
         data.swapchain = new_swapchain;
-        data.framebuffers = generate_framebuffers(new_images, data.render_pass.clone());
-        data.viewport.extent = window_size.into();
+        data.framebuffers = generate_framebuffers(new_images, depth_view, data.render_pass.clone());
+        data.viewport.extent = viewport_extent;
         data.recreate_swapchain = false;
     }
 
@@ -428,7 +449,7 @@ impl Renderer {
         builder
             .begin_render_pass(
                 RenderPassBeginInfo {
-                    clear_values: vec![Some([0.0, 0.0, 1.0, 1.0].into())],
+                    clear_values: vec![Some([0.0, 0.0, 0.0, 1.0].into()), Some(1.0.into())],
                     ..RenderPassBeginInfo::framebuffer(
                         data.framebuffers[image_index as usize].clone(),
                     )
@@ -588,10 +609,16 @@ impl Renderer {
                     load_op: Clear,
                     store_op: Store,
                 },
+                depth: {
+                            format: Format::D32_SFLOAT,
+                            samples: 1,
+                            load_op: Clear,
+                            store_op: DontCare,
+                        }
             },
             pass: {
                 color: [color],
-                depth_stencil: {},
+                depth_stencil: {depth},
             },
         )
         .unwrap();
@@ -615,19 +642,44 @@ impl Renderer {
         )
         .expect("failed to create camera uniform descriptor set");
 
+        let depth_image = self.create_depth_buffer(&swapchain);
+        let depth_view = ImageView::new_default(depth_image.clone()).unwrap();
+
         self.render_data = Some(RenderData {
             window,
             surface,
             swapchain,
             swapchain_images: images.clone(),
             render_pass: render_pass.clone(),
-            framebuffers: generate_framebuffers(images, render_pass),
+            framebuffers: generate_framebuffers(images, depth_view.clone(), render_pass),
             pipeline,
             recreate_swapchain: false,
             previous_frame_end,
             viewport,
             camera_uniform_descriptor_set,
+            depth_image: depth_image,
+            depth_view: depth_view,
         })
+    }
+
+    fn create_depth_buffer(&mut self, swapchain: &Arc<Swapchain>) -> Arc<Image> {
+        let extend = swapchain.image_extent();
+        let mut e = [1; 3];
+        e[0] = extend[0];
+        e[1] = extend[1];
+
+        let depth_image = Image::new(
+            self.memory_allocator.clone(),
+            ImageCreateInfo {
+                usage: ImageUsage::DEPTH_STENCIL_ATTACHMENT,
+                format: Format::D32_SFLOAT,
+                extent: e,
+                ..Default::default()
+            },
+            AllocationCreateInfo::default(),
+        )
+        .unwrap();
+        depth_image
     }
 }
 
@@ -790,6 +842,7 @@ fn create_instance(
 
 fn generate_framebuffers(
     swapchain_images: Vec<Arc<Image>>,
+    depth_image_view: Arc<ImageView>,
     render_pass: Arc<RenderPass>,
 ) -> Vec<Arc<Framebuffer>> {
     swapchain_images
@@ -799,7 +852,7 @@ fn generate_framebuffers(
             Framebuffer::new(
                 render_pass.clone(),
                 FramebufferCreateInfo {
-                    attachments: vec![view.clone()],
+                    attachments: vec![view.clone(), depth_image_view.clone()],
                     ..Default::default()
                 },
             )
