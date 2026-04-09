@@ -1,3 +1,4 @@
+use crate::engine::marching_cubes::Mesh;
 use cgmath::{Deg, Point3, Rad};
 use std::collections::HashMap;
 use std::ops::RangeInclusive;
@@ -100,7 +101,8 @@ struct MeshBufferInfo {
 
 pub struct Renderer {
     library: Arc<VulkanLibrary>,
-    objects: HashMap<u32, ObjectData>,
+    object_data: HashMap<u32, ObjectData>,
+    mesh_data: HashMap<u32, MeshData>,
     instance: Arc<Instance>,
 
     instances: Vec<GPUInstance>,
@@ -115,6 +117,9 @@ pub struct Renderer {
     descriptor_set_allocator: Arc<StandardDescriptorSetAllocator>,
 
     vertex_buffer: Subbuffer<[VertexData]>,
+    max_vertex_count: u32,
+    last_vertex_index: u32,
+
     index_buffer: Subbuffer<[u32]>,
     indirect_buffer: Subbuffer<[DrawIndexedIndirectCommand]>,
 
@@ -131,25 +136,69 @@ pub struct Renderer {
     camera_buffer: Subbuffer<vs::Camera>,
 
     pub render_data: Option<RenderData>,
+
+    last_mesh_id: u32,
+    last_object_id: u32,
+    last_index_index: u32,
 }
 /*
  *
  */
 impl Renderer {
+    fn next_mesh_id(&mut self) -> u32 {
+        self.last_mesh_id += 1;
+        self.last_mesh_id
+    }
+    fn next_object_id(&mut self) -> u32 {
+        self.last_object_id += 1;
+        self.last_object_id
+    }
+
+    fn add_mesh(&mut self, mesh: MeshData) -> u32 {
+        let id = self.next_mesh_id();
+        self.mesh_data.insert(id, mesh);
+        id
+    }
+
     /*
-     * add_instance object_id, Vec<InstanceDat>
-     *
+     * inserts an ObjectData into the internal datastructures and returns its ids
      */
-    pub fn add_object_instance(&mut self, object_id: u32, instanz: GPUInstance) {
-        self.add_instance(instanz);
-        let mesh_ids: Vec<u32> = self
-            .objects
-            .get(&object_id)
-            .expect("Object ID not found")
+    fn create_object_data(&mut self, meshes: Vec<MeshData>) -> u32 {
+        let ids = meshes.iter().cloned().map(|m| self.add_mesh(m)).collect();
+        let oid = self.next_object_id();
+        let data = ObjectData {
+            id: oid,
+            meshes: ids,
+        };
+        self.object_data.insert(oid, data);
+        return oid;
+        //TODO: check if fitting object is present
+    }
+
+    /*
+     * Loads ObjectData into render buffers
+     */
+    fn load_object_data(&mut self, data_id: u32) {
+        let object_data = self.object_data.get(&data_id).unwrap();
+        let meshes: Vec<&MeshData> = object_data
             .meshes
             .iter()
-            .map(|mesh| mesh.id)
+            .map(|m| self.mesh_data.get(m).unwrap())
             .collect();
+        for mesh in meshes {
+            //bestimme MeshBufferInfo
+            //Daten in Vertex Buffer und Index Buffer laden
+        }
+    }
+
+    pub fn add_object_instance(&mut self, object_data_id: u32, instance: GPUInstance) {
+        self.add_instance(instance);
+        let mesh_ids: Vec<u32> = self
+            .object_data
+            .get(&object_data_id)
+            .expect("Object ID not found")
+            .meshes
+            .clone();
         for mesh_id in mesh_ids {
             self.add_indirect_draw(mesh_id);
         }
@@ -287,12 +336,15 @@ impl Renderer {
             }
             objs.insert(obj.id, obj.clone());
         }
+
         if vertices.is_empty() {
             unreachable!("Empty vertex array given to renderer");
         }
 
         let instances = vec![];
         let indirect_commands = vec![];
+
+        let max_vertex_count = vertices.len();
 
         let vertex_buffer = create_vertex_buffer(&memory_allocator, vertices);
         let index_buffer = create_index_buffer(&memory_allocator, indices);
@@ -347,13 +399,18 @@ impl Renderer {
             indirect_commands,
             max_indirect_commands: 1024,
             max_instance_count: 1024,
-            objects: objs,
+            object_data: objs,
             mesh_buffer_mapping,
             index_buffer,
             camera,
             camera_buffer,
             descriptor_set_allocator,
             camera_controller: CameraController::new(1.0, 2.0),
+            max_vertex_count: max_vertex_count as u32,
+            last_mesh_id: 0,
+            last_object_id: 0,
+            last_vertex_index: vertex_pos,
+            last_index_index: index_pos,
         }
     }
 

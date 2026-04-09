@@ -1,9 +1,6 @@
 use cgmath::Matrix4;
 
-use vulkano::{
-    buffer::BufferContents,
-    pipeline::graphics::vertex_input::Vertex,
-};
+use vulkano::{buffer::BufferContents, pipeline::graphics::vertex_input::Vertex};
 
 /*
  * a low level object that can be loaded from a file
@@ -13,7 +10,7 @@ use vulkano::{
 #[derive(Debug, Clone)]
 pub struct ObjectData {
     pub id: u32,
-    pub meshes: Vec<MeshData>,
+    pub meshes: Vec<u32>, //list of mesh ids
 }
 
 /*
@@ -21,20 +18,13 @@ pub struct ObjectData {
  */
 #[derive(Debug, Clone)]
 pub struct MeshData {
-    pub id: u32,
     pub vertices: Vec<VertexData>,
     pub indices: Vec<u32>,
     pub material_id: u32,
 }
 impl MeshData {
-    pub fn new(
-        id: u32,
-        vertices: Vec<VertexData>,
-        indices: Vec<u32>,
-        material_id: u32,
-    ) -> MeshData {
+    pub fn new(vertices: Vec<VertexData>, indices: Vec<u32>, material_id: u32) -> MeshData {
         MeshData {
-            id,
             vertices,
             indices,
             material_id,
