@@ -1,3 +1,5 @@
+use crate::engine::camera::{Camera, Projection};
+use crate::engine::marching_cubes::Mesh;
 use cgmath::{Deg, Point3, Rad};
 use std::{collections::HashMap, ops::RangeInclusive, sync::Arc};
 use vulkano::{
@@ -57,11 +59,8 @@ mod fs {
         path: "src/engine/renderer/shaders/fragment_shader.glsl"
     );
 }
-mod camera;
 pub mod prelude;
 use prelude::*;
-
-use crate::engine::renderer::camera::{Camera, CameraController, Projection};
 
 pub struct RenderData {
     pub window: Arc<Window>,
@@ -119,8 +118,6 @@ pub struct Renderer {
 
     mesh_buffer_mapping: HashMap<u32, MeshBufferInfo>,
 
-    camera: Camera,
-    pub camera_controller: CameraController,
     camera_buffer: Subbuffer<vs::Camera>,
 
     pub render_data: Option<RenderData>,
@@ -266,11 +263,11 @@ impl Renderer {
     /*
      * Instantiates an Object where ObjectData is allready uploaded
      */
-    pub fn add_object_instance(&mut self, instance: GPUInstance) {
+    pub fn add_object_instance(&mut self, object_data_id: u32, instance: GPUInstance) {
         self.add_instance(instance);
         let mesh_ids: Vec<u32> = self
             .object_data
-            .get(&instance.instance_id)
+            .get(&object_data_id)
             .expect("Object ID not found")
             .meshes
             .clone();
@@ -290,13 +287,11 @@ impl Renderer {
     ) -> ObjectDataID {
         let id = self.create_object_data(meshes);
         self.load_object_data(id.0);
-
-        let instance = GPUInstance {
+        let gi = GPUInstance {
             instance_id: id.0,
-            instance,
+            instance: instance,
         };
-
-        self.add_object_instance(instance);
+        self.add_object_instance(id.0, gi);
         return id;
     }
     /*
@@ -467,10 +462,8 @@ impl Renderer {
             object_data: HashMap::new(),
             mesh_buffer_mapping: HashMap::new(),
             index_buffer,
-            camera,
             camera_buffer,
             descriptor_set_allocator,
-            camera_controller: CameraController::new(1.0, 2.0),
             max_vertex_count: 1024,
             last_mesh_id: 1024,
             last_object_id: 1024,
@@ -570,8 +563,6 @@ impl Renderer {
     }
 
     pub fn render(&mut self) {
-        self.update_camera();
-
         let data = self.render_data.as_mut().unwrap();
         let _layout = data.pipeline.layout().set_layouts().first().unwrap();
         let window_size = data.window.as_ref().inner_size();
@@ -671,16 +662,10 @@ impl Renderer {
         }
     }
 
-    fn update_camera(&mut self) {
-        self.camera_controller.update_camera(&mut self.camera);
-        let proj = self.camera.calc_matrix().into();
+    pub fn update_camera_uniform(&mut self, camera: &mut Camera) {
+        let proj = camera.calc_matrix().into();
         let camera_uniform = vs::Camera {
-            view_position: [
-                self.camera.position.x,
-                self.camera.position.y,
-                self.camera.position.z,
-                0.0,
-            ],
+            view_position: [camera.position.x, camera.position.y, camera.position.z, 0.0],
             view_proj: proj,
         };
 
@@ -719,7 +704,7 @@ impl Renderer {
             .camera_uniform_descriptor_set = camera_descriptor_set;
     }
 
-    pub fn resize(&mut self, window: Arc<Window>) {
+    pub fn resize(&mut self, window: Arc<Window>, camera: &mut Camera) {
         let surface = Surface::from_window(self.instance.clone(), window.clone()).unwrap();
 
         let (swapchain, images) = {
@@ -736,7 +721,7 @@ impl Renderer {
                 .unwrap()[0]
                 .0;
 
-            self.camera
+            camera
                 .projection
                 .resize(dimensions.width, dimensions.height);
 
