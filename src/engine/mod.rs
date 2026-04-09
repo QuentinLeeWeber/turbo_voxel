@@ -63,7 +63,7 @@ impl Engine {
                 Point3::new(0.0, 0.0, 0.0),
                 Rad::from(Deg(90.0)),
                 Rad::from(Deg(0.0)),
-                Projection::new(10, 10, Rad::from(Deg(90.0)), 0.1, 10.0),
+                Projection::new(10, 10, Rad::from(Deg(90.0)), 0.1, 1000.0),
             ),
             camera_controller: CameraController::new(1.0, 2.0),
         }
