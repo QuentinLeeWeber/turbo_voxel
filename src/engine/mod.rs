@@ -1,3 +1,5 @@
+use crate::InstanceData;
+use cgmath::{Quaternion, Vector3};
 use std::collections::HashMap;
 use std::sync::Arc;
 use winit::{
@@ -216,9 +218,20 @@ impl<T: 'static> GameObjectBuilder<T> {
     }
 
     pub fn build(self, engine: &mut Engine) {
-        let object_data = engine.renderer.create_object_data(self.object_data);
         let id = engine.game_object_id_count;
         engine.game_object_id_count += 1;
+
+        let object_data = engine.renderer.instantiate_object(
+            self.object_data,
+            InstanceData::new(
+                Vector3::new(
+                    self.transform.pos[0],
+                    self.transform.pos[1],
+                    self.transform.pos[2],
+                ),
+                Quaternion::new(0.0, 0.0, 0.0, 0.0),
+            ),
+        );
 
         engine.add_game_object(Box::new(GameObject {
             id,
@@ -244,9 +257,6 @@ impl Engine {
             scene: HashMap::new(),
             renderer: Renderer::new(&event_loop),
         }
-    }
-    pub fn instantiate_object(&mut self, meshes: Vec<MeshData>, instance: GPUInstance) -> u32 {
-        self.renderer.instantiate_object(meshes, instance)
     }
 
     fn update(&mut self) {

@@ -183,7 +183,7 @@ impl Renderer {
     /*
      * Loads ObjectData into render buffers
      */
-    fn load_object_data(&mut self, data_id: u32) {
+    pub fn load_object_data(&mut self, data_id: u32) {
         let object_data = self.object_data.get(&data_id).unwrap();
         let meshes = object_data.clone().meshes;
 
@@ -277,11 +277,11 @@ impl Renderer {
     /*
      * Instantiates an Object where ObjectData is allready uploaded
      */
-    pub fn add_object_instance(&mut self, object_data_id: u32, instance: GPUInstance) {
+    pub fn add_object_instance(&mut self, instance: GPUInstance) {
         self.add_instance(instance);
         let mesh_ids: Vec<u32> = self
             .object_data
-            .get(&object_data_id)
+            .get(&instance.instance_id)
             .expect("Object ID not found")
             .meshes
             .clone();
@@ -294,11 +294,21 @@ impl Renderer {
      * returns the new id of ObjectData
      * TODO: add deduplication here
      */
-    pub fn instantiate_object(&mut self, meshes: Vec<MeshData>, instance: GPUInstance) -> u32 {
+    pub fn instantiate_object(
+        &mut self,
+        meshes: Vec<MeshData>,
+        instance: InstanceData,
+    ) -> ObjectDataID {
         let id = self.create_object_data(meshes);
         self.load_object_data(id.0);
-        self.add_object_instance(id.0, instance);
-        return id.0;
+
+        let instance = GPUInstance {
+            instance_id: id.0,
+            instance,
+        };
+
+        self.add_object_instance(instance);
+        return id;
     }
     /*
      * update a allready present instance and change their transforms
