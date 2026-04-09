@@ -2,11 +2,11 @@ mod engine;
 mod game_object;
 mod hit_box;
 
+use crate::{engine::marching_cubes, game_object::Transform};
 use cgmath::{Deg, Quaternion, Rad, Rotation3};
 use engine::{Engine, renderer::prelude::*};
+use rayon::prelude::*;
 use winit::{event_loop::EventLoop, platform::x11::EventLoopBuilderExtX11};
-
-use crate::{engine::marching_cubes, game_object::Transform};
 
 fn main() {
     println!("main");
@@ -57,14 +57,21 @@ fn main() {
 
     println!("pre engine");
 
+    let chunks: Vec<_> = (-1..2)
+        .into_par_iter()
+        .flat_map(|x| {
+            (-1..2).into_par_iter().flat_map(move |y| {
+                (-1..2).into_par_iter().map(move |z| {
+                    let chunk = engine::world_gen::generate_chunk(x, y, z);
+                    ((x, y, z), chunk) // Wir geben die Position mit zurück
+                })
+            })
+        })
+        .collect();
+
     let mut voxels = marching_cubes::Voxels::new();
-    for x in -1..2 {
-        for y in -1..2 {
-            for z in -1..2 {
-                let chunk = engine::world_gen::generate_chunk(x, y, z);
-                voxels.insert_chunk(chunk);
-            }
-        }
+    for (_pos, chunk) in chunks {
+        voxels.insert_chunk(chunk);
     }
 
     let mesh = voxels.get_chunk_mesh([0, 0, 0]);
