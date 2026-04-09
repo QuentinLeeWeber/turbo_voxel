@@ -1,8 +1,9 @@
 use std::sync::Arc;
 use winit::{
     application::ApplicationHandler,
-    event::WindowEvent,
+    event::{DeviceEvent, KeyEvent, MouseButton, WindowEvent},
     event_loop::ActiveEventLoop,
+    keyboard::PhysicalKey,
     window::{Window, WindowId},
 };
 
@@ -62,6 +63,22 @@ impl ApplicationHandler for Engine {
         );
         self.renderer.resize(window);
     }
+    fn device_event(
+        &mut self,
+        event_loop: &ActiveEventLoop,
+        device_id: winit::event::DeviceId,
+        event: winit::event::DeviceEvent,
+    ) {
+        if let DeviceEvent::MouseMotion { delta } = event {
+            self.renderer
+                .camera_controller
+                .proccess_mouse(delta.0, delta.1);
+
+            if let Some(render_data) = &self.renderer.render_data {
+                render_data.window.request_redraw();
+            }
+        }
+    }
 
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _: WindowId, event: WindowEvent) {
         match event {
@@ -76,6 +93,29 @@ impl ApplicationHandler for Engine {
                 self.update();
                 self.renderer.render();
             }
+            WindowEvent::KeyboardInput {
+                event:
+                    KeyEvent {
+                        physical_key: PhysicalKey::Code(key),
+                        state,
+                        ..
+                    },
+                ..
+            } => {
+                self.renderer.camera_controller.process_keyboard(key, state);
+                let data = self.renderer.render_data.as_mut();
+
+                if let Some(d) = data {
+                    d.window.request_redraw();
+                }
+            }
+            WindowEvent::MouseWheel { delta, .. } => {
+                self.renderer.camera_controller.process_scroll(&delta);
+                if let Some(d) = self.renderer.render_data.as_ref() {
+                    d.window.request_redraw();
+                }
+            }
+
             _ => (),
         }
     }
