@@ -61,8 +61,8 @@ impl Chunk {
     pub fn new(pos: [i32; 3]) -> Self {
         Self {
             pos,
-            amount: [[[0.0; CHUNK_WIDTH]; CHUNK_WIDTH]; CHUNK_WIDTH],
-            materials: [[[Material::default(); CHUNK_WIDTH]; CHUNK_WIDTH]; CHUNK_WIDTH],
+            amount: Box::new([[[0.0; CHUNK_WIDTH]; CHUNK_WIDTH]; CHUNK_WIDTH]),
+            materials: Box::new([[[Material::default(); CHUNK_WIDTH]; CHUNK_WIDTH]; CHUNK_WIDTH]),
         }
     }
 
@@ -153,9 +153,9 @@ impl Chunk {
     pub fn get_mesh(&self, voxels: &Voxels) -> Mesh {
         let mut mesh = Mesh::new();
 
-        for z in 0..16 {
-            for y in 0..16 {
-                for x in 0..16 {
+        for z in 0..CHUNK_WIDTH {
+            for y in 0..CHUNK_WIDTH {
+                for x in 0..CHUNK_WIDTH {
                     let idx = self.get_table_idx(voxels, x, y, z);
                     let case = &TRIANGLE_TABLE[idx as usize];
 

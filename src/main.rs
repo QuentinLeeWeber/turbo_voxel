@@ -8,6 +8,7 @@ use winit::{event_loop::EventLoop, platform::x11::EventLoopBuilderExtX11};
 use crate::{engine::marching_cubes, game_object::Transform};
 
 fn main() {
+    println!("main");
     let event_loop = EventLoop::builder().with_any_thread(true).build().unwrap();
     let vertices = vec![
         VertexData::new([-0.5, -0.5, 0.5], [0.0, 0.0, 1.0]), // 0
@@ -52,6 +53,8 @@ fn main() {
     };
 
     let mut engine = Engine::new(&event_loop);
+
+    println!("pre engine");
 
     let mut voxels = marching_cubes::Voxels::new();
     for x in -1..2 {

@@ -4,10 +4,11 @@ const PERLIN_CHUNK_WIDTH: i32 = 4;
 use super::{CHUNK_WIDTH, Chunk, Material};
 
 pub fn generate_chunk(x: i32, y: i32, z: i32) -> Chunk {
+    println!("generate chunks");
     let mut chunk = Chunk {
         pos: [x, y, z],
-        materials: [[[Material::default(); CHUNK_WIDTH]; CHUNK_WIDTH]; CHUNK_WIDTH],
-        amount: [[[0.0f32; CHUNK_WIDTH]; CHUNK_WIDTH]; CHUNK_WIDTH],
+        materials: Box::new([[[Material::default(); CHUNK_WIDTH]; CHUNK_WIDTH]; CHUNK_WIDTH]),
+        amount: Box::new([[[0.0f32; CHUNK_WIDTH]; CHUNK_WIDTH]; CHUNK_WIDTH]),
     };
 
     //use image::{ImageBuffer, Rgb};
@@ -55,11 +56,11 @@ pub fn generate_chunk(x: i32, y: i32, z: i32) -> Chunk {
     chunk
 }
 
-fn ridged_noise(offset_x: i32, offset_y: i32) -> [[f32; CHUNK_WIDTH]; CHUNK_WIDTH] {
+fn ridged_noise(offset_x: i32, offset_y: i32) -> Box<[[f32; CHUNK_WIDTH]; CHUNK_WIDTH]> {
     let octaves = 2;
     let lacunarity = 0.5;
     let gain = 1.0;
-    let mut map = [[0f32; CHUNK_WIDTH]; CHUNK_WIDTH];
+    let mut map = Box::new([[0f32; CHUNK_WIDTH]; CHUNK_WIDTH]);
 
     let perlin_noise = PerlinNoise::new(PERLIN_SEED, offset_x, offset_y);
 
@@ -91,12 +92,12 @@ fn ridged_noise(offset_x: i32, offset_y: i32) -> [[f32; CHUNK_WIDTH]; CHUNK_WIDT
 }
 
 struct PerlinNoise {
-    grads: [[[f32; 2]; CHUNK_WIDTH]; CHUNK_WIDTH],
+    grads: Box<[[[f32; 2]; CHUNK_WIDTH]; CHUNK_WIDTH]>,
 }
 
 impl PerlinNoise {
     fn new(seed: u32, offset_x: i32, offset_y: i32) -> Self {
-        let mut grads = [[[0f32; 2]; CHUNK_WIDTH]; CHUNK_WIDTH];
+        let mut grads = Box::new([[[0f32; 2]; CHUNK_WIDTH]; CHUNK_WIDTH]);
         for x in 0..CHUNK_WIDTH {
             for y in 0..CHUNK_WIDTH {
                 grads[x][y] = random_grad(x as i32 + offset_x, y as i32 + offset_y, seed);

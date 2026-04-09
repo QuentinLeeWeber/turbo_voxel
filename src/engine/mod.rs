@@ -22,7 +22,7 @@ pub mod world_gen;
 
 use renderer::Renderer;
 
-pub const CHUNK_WIDTH: usize = 16;
+pub const CHUNK_WIDTH: usize = 256;
 
 #[derive(Clone, Copy, Debug, Default)]
 pub enum Material {
@@ -37,8 +37,8 @@ pub enum Material {
 #[derive(Debug)]
 pub struct Chunk {
     pub pos: [i32; 3],
-    pub materials: [[[Material; CHUNK_WIDTH]; CHUNK_WIDTH]; CHUNK_WIDTH],
-    pub amount: [[[f32; CHUNK_WIDTH]; CHUNK_WIDTH]; CHUNK_WIDTH],
+    pub materials: Box<[[[Material; CHUNK_WIDTH]; CHUNK_WIDTH]; CHUNK_WIDTH]>,
+    pub amount: Box<[[[f32; CHUNK_WIDTH]; CHUNK_WIDTH]; CHUNK_WIDTH]>,
 }
 
 enum Event {
