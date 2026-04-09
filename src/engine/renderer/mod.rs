@@ -63,10 +63,10 @@ mod object_data;
 pub mod prelude;
 use prelude::*;
 
-use crate::engine::renderer::camera::Camera;
+use crate::engine::renderer::camera::{Camera, CameraController, Projection};
 
 pub struct RenderData {
-    window: Arc<Window>,
+    pub window: Arc<Window>,
     surface: Arc<Surface>,
     swapchain: Arc<Swapchain>,
     swapchain_images: Vec<Arc<Image>>,
@@ -76,7 +76,7 @@ pub struct RenderData {
     recreate_swapchain: bool,
     previous_frame_end: Option<Box<dyn GpuFuture>>,
     viewport: Viewport,
-    camera_uniform_descriptor_set: Arc<DescriptorSet>,
+    pub camera_uniform_descriptor_set: Arc<DescriptorSet>,
 }
 struct MeshBufferInfo {
     first_vertex: u32,
@@ -102,9 +102,10 @@ pub struct Renderer {
     queue_family_index: u32,
     queue: Arc<Queue>,
     memory_allocator: Arc<StandardMemoryAllocator>,
-    render_data: Option<RenderData>,
+    pub render_data: Option<RenderData>,
     mesh_buffer_mapping: HashMap<u32, MeshBufferInfo>,
     camera: Camera,
+    pub camera_controller: CameraController,
     camera_buffer: Subbuffer<vs::Camera>,
     descriptor_set_allocator: Arc<StandardDescriptorSetAllocator>,
 }
@@ -259,11 +260,12 @@ impl Renderer {
         let indirect_buffer = create_indirect_buffer(&memory_allocator);
         let instance_buffer = create_instance_buffer(&memory_allocator);
 
-        let camera = Camera {
-            position: Point3::new(0.0, 0.0, 0.0),
-            yaw: Deg(90.0).into(),
-            pitch: Deg(0.0).into(),
-        };
+        let mut camera = Camera::new(
+            Point3::new(0.0, 0.0, 0.0),
+            Rad::from(Deg(90.0)),
+            Rad::from(Deg(0.0)),
+            Projection::new(10, 10, Rad::from(Deg(90.0)), 0.1, 10.0),
+        );
         let camera_uniform = vs::Camera {
             view_position: [camera.position.x, camera.position.y, camera.position.z, 0.0].into(),
             view_proj: camera.calc_matrix().into(),
@@ -312,6 +314,7 @@ impl Renderer {
             camera: camera,
             camera_buffer: camera_buffer,
             descriptor_set_allocator: descriptor_set_allocator,
+            camera_controller: CameraController::new(1.0, 1.0),
         };
     }
 
@@ -492,6 +495,8 @@ impl Renderer {
     }
 
     fn update_camera(&mut self) {
+        self.camera_controller.update_camera(&mut self.camera);
+        let proj = self.camera.calc_matrix().into();
         let camera_uniform = vs::Camera {
             view_position: [
                 self.camera.position.x,
@@ -500,12 +505,42 @@ impl Renderer {
                 0.0,
             ]
             .into(),
-            view_proj: self.camera.calc_matrix().into(),
+            view_proj: proj,
         };
 
-        if let Ok(mut mapping) = self.camera_buffer.write() {
-            *mapping = camera_uniform;
+        let camera_buffer = Buffer::from_data(
+            self.memory_allocator.clone(),
+            BufferCreateInfo {
+                usage: BufferUsage::UNIFORM_BUFFER,
+                ..Default::default()
+            },
+            AllocationCreateInfo {
+                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
+                    | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
+                ..Default::default()
+            },
+            camera_uniform,
+        )
+        .expect("Fehler beim Erstellen des Camera Buffers");
+        let data = self.render_data.as_mut().unwrap();
+        let window_size = data.window.as_ref().inner_size();
+        if window_size.width == 0 || window_size.height == 0 {
+            return;
         }
+        self.camera_buffer = camera_buffer.clone();
+
+        let layout = data.pipeline.layout().set_layouts().get(0).unwrap();
+        let camera_descriptor_set = DescriptorSet::new(
+            self.descriptor_set_allocator.clone(),
+            layout.clone(),
+            [WriteDescriptorSet::buffer(0, camera_buffer)],
+            [],
+        )
+        .expect("Fehler beim Erstellen des Descriptor Sets");
+        self.render_data
+            .as_mut()
+            .unwrap()
+            .camera_uniform_descriptor_set = camera_descriptor_set;
     }
 
     pub fn resize(&mut self, window: Arc<Window>) {
@@ -524,6 +559,10 @@ impl Renderer {
                 .surface_formats(&surface, Default::default())
                 .unwrap()[0]
                 .0;
+
+            self.camera
+                .projection
+                .resize(dimensions.width, dimensions.height);
 
             Swapchain::new(
                 self.device.clone(),
