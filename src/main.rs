@@ -61,10 +61,13 @@ fn main() {
     let axis = cgmath::Vector3::new(0.5, 0.5, 0.1).normalize();
     engine.renderer.add_object_instance(
         1,
-        InstanceData::new(
-            cgmath::Vector3::new(-0.1, 0.3, -0.02),
-            Quaternion::from_axis_angle(axis, Deg(10.0)),
-        ),
+        GPUInstance {
+            instance_id: 1,
+            instance: InstanceData::new(
+                cgmath::Vector3::new(-0.1, 0.3, -0.02),
+                Quaternion::from_axis_angle(axis, Deg(10.0)),
+            ),
+        },
     );
     event_loop.set_control_flow(winit::event_loop::ControlFlow::Poll);
     event_loop.run_app(&mut engine).unwrap();

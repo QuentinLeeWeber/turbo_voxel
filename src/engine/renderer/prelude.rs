@@ -129,12 +129,15 @@ impl VertexData {
         };
     }
 }
+#[derive(Copy, Clone)]
+pub struct GPUInstance {
+    pub instance_id: u32, //die globale ID
+    pub instance: InstanceData,
+}
 
 #[derive(BufferContents, Vertex, Copy, Clone)]
 #[repr(C)]
 pub struct InstanceData {
-    // A 2D array maps perfectly to a mat4 in GLSL and automatically
-    // consumes locations 1, 2, 3, and 4.
     #[format(R32G32B32A32_SFLOAT)]
     pub model_mat: [[f32; 4]; 4],
 }

@@ -92,7 +92,7 @@ pub struct Renderer {
     library: Arc<VulkanLibrary>,
     objects: HashMap<u32, ObjectData>,
     instance: Arc<Instance>,
-    instances: Vec<InstanceData>,
+    instances: Vec<GPUInstance>,
     indirect_commands: Vec<DrawIndexedIndirectCommand>,
     max_indirect_commands: usize,
     max_instance_count: usize,
@@ -121,7 +121,7 @@ impl Renderer {
      * add_instance object_id, Vec<InstanceDat>
      *
      */
-    pub fn add_object_instance(&mut self, object_id: u32, instanz: InstanceData) {
+    pub fn add_object_instance(&mut self, object_id: u32, instanz: GPUInstance) {
         self.add_instance(instanz);
         let mesh_ids: Vec<u32> = self
             .objects
@@ -133,6 +133,22 @@ impl Renderer {
             .collect();
         for mesh_id in mesh_ids {
             self.add_indirect_draw(mesh_id);
+        }
+    }
+    /*
+     * update a allready present instance and change their transforms
+     */
+    pub fn update_object_instance(&mut self, instanz_id: u32, instanz: InstanceData) {
+        let ind = self
+            .instances
+            .iter()
+            .position(|i| i.instance_id == instanz_id)
+            .unwrap();
+        self.instances[ind].instance = instanz;
+
+        if let Ok(mut mapping) = self.instance_buffer.write() {
+            mapping[ind] = instanz;
+            println!("A Object update happened");
         }
     }
 
@@ -171,7 +187,7 @@ impl Renderer {
         }
     }
 
-    pub fn add_instance(&mut self, instanz: InstanceData) {
+    pub fn add_instance(&mut self, instanz: GPUInstance) {
         self.instances.push(instanz);
         let count = self.instances.len();
 
@@ -188,12 +204,14 @@ impl Renderer {
                         | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
                     ..Default::default()
                 },
-                self.instances.clone(),
+                self.instances.iter().map(|i| i.instance),
             )
             .unwrap();
         } else {
             if let Ok(mut mapping) = self.instance_buffer.write() {
-                mapping[..count].copy_from_slice(&self.instances);
+                for (i, inst) in self.instances.iter().take(count).enumerate() {
+                    mapping[i] = inst.instance;
+                }
             }
         }
     }
