@@ -2,6 +2,7 @@ use crate::engine::camera::{Camera, Projection};
 use crate::engine::marching_cubes::Mesh;
 use cgmath::{Deg, Point3, Rad};
 use std::{collections::HashMap, ops::RangeInclusive, sync::Arc};
+use vulkano::device::DeviceFeatures;
 use vulkano::{
     Validated, VulkanError, VulkanLibrary,
     buffer::{Buffer, BufferCreateInfo, BufferUsage, Subbuffer},
@@ -383,15 +384,27 @@ impl Renderer {
 
         let device_extensions = DeviceExtensions {
             khr_swapchain: true,
-            khr_draw_indirect_count: true,
             ..DeviceExtensions::empty()
         };
 
-        let (device, mut queues) = create_device(
+        let features = DeviceFeatures {
+            multi_draw_indirect: true,
+            ..Default::default()
+        };
+
+        let (device, mut queues) = Device::new(
             physical_device.clone(),
-            queue_family_index,
-            device_extensions,
-        );
+            DeviceCreateInfo {
+                queue_create_infos: vec![QueueCreateInfo {
+                    queue_family_index,
+                    ..Default::default()
+                }],
+                enabled_extensions: device_extensions,
+                enabled_features: features, // <-- ADD THIS LINE
+                ..Default::default()
+            },
+        )
+        .expect("failed to create device");
 
         let supported_features = physical_device.supported_features();
         if !supported_features.multi_draw_indirect {
