@@ -1,6 +1,5 @@
-use cgmath::{Matrix3, Matrix4};
+use cgmath::Matrix4;
 use std::sync::Arc;
-use vulkano::buffer::Subbuffer;
 
 use vulkano::command_buffer::{AutoCommandBufferBuilder, PrimaryAutoCommandBuffer};
 use vulkano::descriptor_set::allocator::StandardDescriptorSetAllocator;
@@ -8,12 +7,9 @@ use vulkano::descriptor_set::layout::DescriptorSetLayout;
 use vulkano::device::Device;
 use vulkano::image::Image;
 use vulkano::{
-    buffer::{Buffer, BufferContents},
-    command_buffer::allocator::StandardCommandBufferAllocator,
+    buffer::BufferContents,
     descriptor_set::DescriptorSet,
-    device::Queue,
     image::{sampler::Sampler, view::ImageView},
-    memory::allocator::StandardMemoryAllocator,
     pipeline::graphics::vertex_input::Vertex,
 };
 
@@ -102,12 +98,12 @@ impl MeshData {
         indices: Vec<u32>,
         material_id: u32,
     ) -> MeshData {
-        return MeshData {
+        MeshData {
             id,
             vertices,
             indices,
             material_id,
-        };
+        }
     }
 }
 /*
@@ -123,10 +119,10 @@ pub struct VertexData {
 }
 impl VertexData {
     pub fn new(pos: [f32; 3], normal: [f32; 3]) -> VertexData {
-        return VertexData {
+        VertexData {
             position: pos,
-            normal: normal,
-        };
+            normal,
+        }
     }
 }
 #[derive(Copy, Clone)]
@@ -145,8 +141,8 @@ pub struct InstanceData {
 impl InstanceData {
     pub fn new(position: cgmath::Vector3<f32>, rotation: cgmath::Quaternion<f32>) -> InstanceData {
         let model_mat = Matrix4::from_translation(position) * Matrix4::from(rotation);
-        return InstanceData {
+        InstanceData {
             model_mat: model_mat.into(),
-        };
+        }
     }
 }

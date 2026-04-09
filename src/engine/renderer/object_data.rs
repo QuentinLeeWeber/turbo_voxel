@@ -1,4 +1,3 @@
-use std::alloc::alloc;
 use std::sync::Arc;
 use vulkano::buffer::{Buffer, BufferCreateInfo, BufferUsage};
 use vulkano::command_buffer::{
@@ -26,10 +25,10 @@ impl Texture for ImageData {
     fn load_textures(
         &self,
         allocator: std::sync::Arc<vulkano::memory::allocator::StandardMemoryAllocator>,
-        command_buffer_allocator: Arc<
+        _command_buffer_allocator: Arc<
             vulkano::command_buffer::allocator::StandardCommandBufferAllocator,
         >,
-        queue: std::sync::Arc<vulkano::device::Queue>,
+        _queue: std::sync::Arc<vulkano::device::Queue>,
         layout: Arc<DescriptorSetLayout>,
         device: Arc<Device>,
         descriptor_set_allocator: Arc<StandardDescriptorSetAllocator>,
@@ -93,8 +92,8 @@ impl Texture for ImageData {
 
         vec![LoadedTexture {
             image: img,
-            view: view,
-            sampler: sampler,
+            view,
+            sampler,
             descriptor_set: set,
         }]
     }

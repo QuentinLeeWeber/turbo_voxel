@@ -53,8 +53,8 @@ fn main() {
         materials: Vec::new(),
         meshes: vec![MeshData {
             id: 1,
-            vertices: vertices,
-            indices: indices,
+            vertices,
+            indices,
             material_id: 0,
         }],
     }];

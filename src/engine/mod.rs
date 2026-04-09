@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use winit::{
     application::ApplicationHandler,
-    event::{DeviceEvent, KeyEvent, MouseButton, WindowEvent},
+    event::{DeviceEvent, KeyEvent, WindowEvent},
     event_loop::ActiveEventLoop,
     keyboard::PhysicalKey,
     window::{Window, WindowId},
@@ -153,8 +153,8 @@ impl ApplicationHandler for Engine {
     }
     fn device_event(
         &mut self,
-        event_loop: &ActiveEventLoop,
-        device_id: winit::event::DeviceId,
+        _event_loop: &ActiveEventLoop,
+        _device_id: winit::event::DeviceId,
         event: winit::event::DeviceEvent,
     ) {
         if let DeviceEvent::MouseMotion { delta } = event {
