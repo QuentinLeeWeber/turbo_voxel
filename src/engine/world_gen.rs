@@ -1,27 +1,11 @@
-const CHUNK_WIDTH: usize = 16;
 const PERLIN_SEED: u32 = 123456789;
 const PERLIN_CHUNK_WIDTH: i32 = 4;
 
-#[derive(Clone, Copy, Debug, Default)]
-pub enum Material {
-    #[default]
-    STONE,
-    DIRT,
-    GRASS,
-    SNOW,
-    SAND,
-}
-
-#[derive(Debug)]
-pub struct Chunk {
-    pub chunk_pos: [i32; 3],
-    pub materials: [[[Material; CHUNK_WIDTH]; CHUNK_WIDTH]; CHUNK_WIDTH],
-    pub amount: [[[f32; CHUNK_WIDTH]; CHUNK_WIDTH]; CHUNK_WIDTH],
-}
+use super::{CHUNK_WIDTH, Chunk, Material};
 
 pub fn generate_chunk(x: i32, y: i32, z: i32) -> Chunk {
     let mut chunk = Chunk {
-        chunk_pos: [x, y, z],
+        pos: [x, y, z],
         materials: [[[Material::default(); CHUNK_WIDTH]; CHUNK_WIDTH]; CHUNK_WIDTH],
         amount: [[[0.0f32; CHUNK_WIDTH]; CHUNK_WIDTH]; CHUNK_WIDTH],
     };

@@ -7,6 +7,8 @@ use winit::{
     window::{Window, WindowId},
 };
 
+mod marching_cubes;
+mod marching_cubes_data;
 pub mod renderer;
 mod scene;
 pub mod world_gen;
@@ -15,6 +17,25 @@ use renderer::Renderer;
 use scene::Scene;
 
 use crate::engine::renderer::prelude::ObjectData;
+
+pub const CHUNK_WIDTH: usize = 16;
+
+#[derive(Clone, Copy, Debug, Default)]
+pub enum Material {
+    #[default]
+    STONE,
+    DIRT,
+    GRASS,
+    SNOW,
+    SAND,
+}
+
+#[derive(Debug)]
+pub struct Chunk {
+    pub pos: [i32; 3],
+    pub materials: [[[Material; CHUNK_WIDTH]; CHUNK_WIDTH]; CHUNK_WIDTH],
+    pub amount: [[[f32; CHUNK_WIDTH]; CHUNK_WIDTH]; CHUNK_WIDTH],
+}
 
 struct Transform {
     pos: [f32; 3],
