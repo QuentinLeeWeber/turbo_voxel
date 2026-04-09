@@ -40,6 +40,14 @@ struct Octree {
     nodes: HashMap<u64, OctreeNode>,
 }
 
+impl<'a> IntoIterator for &'a Octree {
+    type Item = u64;
+    type IntoIter = OctreeIterator<'a>;
+    fn into_iter(self) -> Self::IntoIter {
+        OctreeIterator::new(self, 0)
+    }
+}
+
 impl Octree {
     pub fn add_element(&mut self, obj: &crate::engine::HitBox) -> Option<u64> {
         let bounding_box_opt = obj.get_bounding_box();
@@ -253,8 +261,67 @@ impl OctreeNode {
     }
 }
 
-pub fn calculate_collision(entities: &mut HashMap<u32, Box<dyn GameObject>>) -> () {
-    let mut octree_elements: HashMap<u64, Vec<u32>> = HashMap::new();
+struct OctreeIterator<'a> {
+    octree: &'a Octree,
+    last_up: u64,
+    cur: u64,
+}
+
+impl<'a> OctreeIterator<'a> {
+    fn new(octree: &'a Octree, start: u64) -> Self {
+        Self {
+            octree: octree,
+            last_up: 0, //stores origin of the last step up the Octree
+            cur: start,
+        }
+    }
+}
+
+impl<'a> Iterator for OctreeIterator<'a> {
+    type Item = u64;
+    fn next(&mut self) -> Option<Self::Item> {
+        for child in OctreeNode::get_idx_children(self.cur) {
+            if self.octree.nodes.contains_key(&child) && self.last_up < child {
+                self.cur = child;
+                return Some(self.cur);
+            }
+        }
+        self.last_up = self.cur;
+        self.cur = OctreeNode::get_idx_parent(self.cur)?;
+        return Some(self.cur);
+    }
+}
+
+pub struct CollisionStack<'a> {
+    stack: Vec<(u64, (u32, &'a HitBox))>,
+}
+
+impl<'a> CollisionStack<'a> {
+    fn new() -> Self {
+        Self { stack: vec![] }
+    }
+    fn add_node_elements(
+        &mut self,
+        octree_elements: &'a HashMap<u64, Vec<(u32, HitBox)>>,
+        node: u64,
+    ) {
+        if !octree_elements.contains_key(&node) {
+            return;
+        }
+        for (index, hit_box) in octree_elements.get(&node).unwrap() {
+            self.stack.push((node, (*index, &hit_box)));
+        }
+    }
+
+    fn remove_lower_elements(&mut self, node: u64) {
+        while self.stack.last().is_some() && self.stack.last().unwrap().0 > node {
+            self.stack.pop();
+        }
+    }
+}
+
+pub fn calculate_collisions(entities: &mut HashMap<u32, Box<dyn GameObject>>) -> () {
+    let mut octree_elements: HashMap<u64, Vec<(u32, HitBox)>> = HashMap::new();
     let mut octree = Octree::new(
         CoordinateBorders {
             lower: -5000.,
@@ -279,7 +346,26 @@ pub fn calculate_collision(entities: &mut HashMap<u32, Box<dyn GameObject>>) -> 
         if !octree_elements.contains_key(&key) {
             octree_elements.insert(key, vec![]);
         }
-        octree_elements.get_mut(&key).unwrap().push(*index);
+        octree_elements
+            .get_mut(&key)
+            .unwrap()
+            .push((*index, hit_box));
     }
-    for (idx, vec) in &octree_elements {}
+    let mut stack: CollisionStack = CollisionStack::new();
+    stack.add_node_elements(&octree_elements, 0);
+    let mut prev_node: u64 = 0;
+    for node in &octree {
+        if node < prev_node {
+            //step up the octree
+            stack.remove_lower_elements(node);
+        } else {
+            //step down the octree
+            stack.add_node_elements(&octree_elements, node);
+        }
+        prev_node = node;
+    }
+}
+
+fn check_collision(obj_1: &HitBox, obj_2: &HitBox) -> bool {
+    return true;
 }
