@@ -1,7 +1,7 @@
 use crate::engine::BoundingBox;
 use crate::engine::{GameObject, HitBox};
-use cgmath::SquareMatrix;
 use cgmath::Vector3;
+use cgmath::{InnerSpace, SquareMatrix};
 use std::char::from_u32;
 use std::collections::HashMap;
 
@@ -557,7 +557,10 @@ fn check_line_sphere_collision(line: &HitBox, sphere: &HitBox) -> bool {
             return false;
         }
     };
-    return false;
+    let alpha = line_vec.dot(line_point - sphere_point) / line_vec.dot(line_vec) * -1.;
+    let distance = sphere_point - (line_point + alpha * line_vec);
+    let distance = distance.dot(distance);
+    return distance < radius * radius;
 }
 
 fn get_collision_direction(stationary: &HitBox, moved: &HitBox) -> Vector3<f32> {
