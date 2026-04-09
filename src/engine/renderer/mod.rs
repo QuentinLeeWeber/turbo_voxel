@@ -197,8 +197,6 @@ impl Renderer {
                 index_start: self.last_index_index,
             };
             self.mesh_buffer_mapping.insert(mesh, info);
-            self.last_vertex_index += mesh_data.vertices.len() as u32;
-            self.last_index_index += mesh_data.indices.len() as u32;
 
             self.upload_to_vertex_buffer(&mesh_data, v_len);
             self.upload_to_index_buffer(&mesh_data, i_len);
@@ -276,7 +274,9 @@ impl Renderer {
             mapping[start..start + mesh_data.vertices.len()].copy_from_slice(&mesh_data.vertices);
         }
     }
-
+    /*
+     * Instantiates an Object where ObjectData is allready uploaded
+     */
     pub fn add_object_instance(&mut self, object_data_id: u32, instance: GPUInstance) {
         self.add_instance(instance);
         let mesh_ids: Vec<u32> = self
@@ -288,6 +288,17 @@ impl Renderer {
         for mesh_id in mesh_ids {
             self.add_indirect_draw(mesh_id);
         }
+    }
+    /*
+     * creates a new object instance from an object that was never uploaded
+     * returns the new id of ObjectData
+     * TODO: add deduplication here
+     */
+    pub fn instantiate_object(&mut self, meshes: Vec<MeshData>, instance: GPUInstance) -> u32 {
+        let id = self.create_object_data(meshes);
+        self.load_object_data(id.0);
+        self.add_object_instance(id.0, instance);
+        return id.0;
     }
     /*
      * update a allready present instance and change their transforms
@@ -308,7 +319,7 @@ impl Renderer {
         }
     }
 
-    pub fn add_indirect_draw(&mut self, mesh_id: u32) {
+    fn add_indirect_draw(&mut self, mesh_id: u32) {
         let info = self.mesh_buffer_mapping.get(&mesh_id).unwrap();
 
         self.indirect_commands.push(DrawIndexedIndirectCommand {
@@ -341,7 +352,7 @@ impl Renderer {
         }
     }
 
-    pub fn add_instance(&mut self, instanz: GPUInstance) {
+    fn add_instance(&mut self, instanz: GPUInstance) {
         self.instances.push(instanz);
         let count = self.instances.len();
 
