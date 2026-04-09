@@ -57,6 +57,15 @@ pub fn generate_chunk(x: i32, y: i32, z: i32) -> Chunk {
     chunk
 }
 
+fn gen_2d_range(
+    from1: usize,
+    to1: usize,
+    from2: usize,
+    to2: usize,
+) -> impl Iterator<Item = (usize, usize)> {
+    (from1..to1).flat_map(move |a| (from2..to2).map(move |b| (a, b)))
+}
+
 fn ridged_noise(offset_x: i32, offset_y: i32) -> Box<[[f32; CHUNK_WIDTH]; CHUNK_WIDTH]> {
     let octaves = 2;
     let lacunarity = 0.5;
