@@ -17,7 +17,7 @@ pub mod world_gen;
 use renderer::Renderer;
 use scene::Scene;
 
-use crate::engine::renderer::prelude::ObjectData;
+use crate::engine::renderer::prelude::{GPUInstance, ObjectData};
 
 pub const CHUNK_WIDTH: usize = 16;
 
@@ -123,6 +123,8 @@ trait GameObject {
     fn update(&mut self);
     fn get_transform(&self) -> Transform;
     fn get_hitbox(&self) -> HitBox;
+    fn get_object_data(&self) -> ObjectData; //returns basic data like meshes needed for rendering
+    fn get_instance_data(&self) -> GPUInstance; //returns the instance transforms
     fn notify(&mut self) -> Vec<Event>;
 }
 
