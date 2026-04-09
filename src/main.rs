@@ -5,6 +5,8 @@ mod hit_box;
 use engine::{Engine, renderer::prelude::*};
 use winit::{event_loop::EventLoop, platform::x11::EventLoopBuilderExtX11};
 
+use crate::engine::marching_cubes;
+
 fn main() {
     let event_loop = EventLoop::builder().with_any_thread(true).build().unwrap();
     let vertices = vec![
@@ -49,6 +51,22 @@ fn main() {
     };
 
     let mut engine = Engine::new(&event_loop);
+
+    let mut voxels = marching_cubes::Voxels::new();
+    for x in -1..2 {
+        for y in -1..2 {
+            for z in -1..2 {
+                let chunk = engine::world_gen::generate_chunk(x, y, z);
+                voxels.insert_chunk(chunk);
+            }
+        }
+    }
+
+    let mesh = voxels.get_chunk_mesh([0, 0, 0]);
+    println!("{:#?}", mesh);
+
+    let mesh = mesh.into();
+    println!("{:#?}", mesh);
 
     struct ObjectData {}
     game_object::GameObjectBuilder::<ObjectData>::new(ObjectData {})

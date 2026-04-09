@@ -38,7 +38,7 @@ impl MeshData {
 #[repr(C)]
 pub struct VertexData {
     #[format(R32G32B32_SFLOAT)]
-    position: [f32; 3],
+    pub position: [f32; 3],
     #[format(R32G32B32_SFLOAT)]
     pub normal: [f32; 3],
 }

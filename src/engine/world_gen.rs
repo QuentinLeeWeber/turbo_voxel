@@ -29,7 +29,7 @@ pub fn generate_chunk(x: i32, y: i32, z: i32) -> Chunk {
 
     img.save("yeet.png").unwrap();*/
 
-    let sea_level = 64.0;
+    let sea_level = 8.0;
     let mut terrain = ridged_noise(x, y);
 
     for x in 0..CHUNK_WIDTH {

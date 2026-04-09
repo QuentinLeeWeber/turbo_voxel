@@ -415,7 +415,7 @@ impl Renderer {
             Point3::new(0.0, 0.0, 0.0),
             Rad::from(Deg(90.0)),
             Rad::from(Deg(0.0)),
-            Projection::new(10, 10, Rad::from(Deg(90.0)), 0.1, 10.0),
+            Projection::new(10, 10, Rad::from(Deg(90.0)), 1.0, 1000.0),
         );
         let camera_uniform = vs::Camera {
             view_position: [camera.position.x, camera.position.y, camera.position.z, 0.0],

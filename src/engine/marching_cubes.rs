@@ -4,6 +4,8 @@ use std::{
     vec::Vec,
 };
 
+use crate::engine::renderer::prelude::VertexData;
+
 use super::{CHUNK_WIDTH, Chunk, Material, marching_cubes_data::*};
 
 pub struct Voxels {
@@ -193,6 +195,38 @@ impl Chunk {
                 }
             }
         }
+
+        for face in &mesh.faces {
+            let [i0, i1, i2] = face.points;
+            let p0 = mesh.vertices[i0].pos;
+            let p1 = mesh.vertices[i1].pos;
+            let p2 = mesh.vertices[i2].pos;
+
+            let e1 = [p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]];
+            let e2 = [p2[0] - p0[0], p2[1] - p0[1], p2[2] - p0[2]];
+
+            let n = [
+                e1[1] * e2[2] - e1[2] * e2[1],
+                e1[2] * e2[0] - e1[0] * e2[2],
+                e1[0] * e2[1] - e1[1] * e2[0],
+            ];
+
+            for &i in &[i0, i1, i2] {
+                mesh.vertices[i].normal[0] += n[0];
+                mesh.vertices[i].normal[1] += n[1];
+                mesh.vertices[i].normal[2] += n[2];
+            }
+        }
+
+        for v in &mut mesh.vertices {
+            let len = (v.normal[0].powi(2) + v.normal[1].powi(2) + v.normal[2].powi(2)).sqrt();
+            if len > 1e-6 {
+                v.normal[0] /= len;
+                v.normal[1] /= len;
+                v.normal[2] /= len;
+            }
+        }
+
         mesh
     }
 }
@@ -241,11 +275,15 @@ pub fn edge_idx_to_point_coord(
 #[derive(Debug)]
 pub struct Vertex {
     pub pos: [f32; 3],
+    pub normal: [f32; 3],
 }
 
 impl Vertex {
     pub fn from_pos(pos: [f32; 3]) -> Self {
-        Self { pos }
+        Self {
+            pos,
+            normal: [0.0; 3],
+        }
     }
 }
 
@@ -280,5 +318,31 @@ impl Mesh {
         self.vertices.clear();
         self.faces.clear();
         self.hashed_points.clear();
+    }
+}
+
+impl Into<crate::engine::renderer::prelude::MeshData> for Mesh {
+    fn into(self) -> crate::engine::renderer::prelude::MeshData {
+        let vertices: Vec<crate::engine::renderer::prelude::VertexData> = self
+            .vertices
+            .into_iter()
+            .map(|v| VertexData {
+                position: v.pos,
+                normal: v.normal,
+            })
+            .collect();
+
+        let indices: Vec<u32> = self
+            .faces
+            .into_iter()
+            .map(|f| (f.points[0] as u32, f.points[1] as u32, f.points[2] as u32))
+            .flat_map(|(a, b, c)| [a, b, c])
+            .collect();
+
+        crate::engine::renderer::prelude::MeshData {
+            vertices,
+            indices,
+            material_id: 0,
+        }
     }
 }
