@@ -9,6 +9,7 @@ use winit::{
 
 pub mod renderer;
 mod scene;
+pub mod world_gen;
 
 use renderer::Renderer;
 use scene::Scene;

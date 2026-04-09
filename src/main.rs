@@ -5,11 +5,12 @@ use cgmath::InnerSpace;
 use cgmath::Quaternion;
 use cgmath::Rotation3;
 use engine::Engine;
-use engine::renderer::Renderer;
 use engine::renderer::prelude::*;
+use engine::world_gen;
 use winit::{event_loop::EventLoop, platform::x11::EventLoopBuilderExtX11};
 
 fn main() {
+    world_gen::generate_chunk(1, 1, 1);
     let event_loop = EventLoop::builder().with_any_thread(true).build().unwrap();
     let vertices = vec![
         VertexData::new([-0.5, -0.5, 0.5], [0.0, 0.0, 1.0]), // 0
