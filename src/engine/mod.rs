@@ -140,6 +140,9 @@ impl Engine {
             renderer: Renderer::new(&event_loop), // TODO: hier alle Objekte der Szene übergeben.
         }
     }
+    pub fn instantiate_object(&mut self, meshes: Vec<MeshData>, instance: GPUInstance) -> u32 {
+        self.renderer.instantiate_object(meshes, instance)
+    }
 
     fn update(&mut self) {}
 }

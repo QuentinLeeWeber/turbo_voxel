@@ -164,7 +164,7 @@ impl Renderer {
     /*
      * inserts an ObjectData into the internal datastructures and returns its ids
      */
-    fn create_object_data(&mut self, meshes: Vec<MeshData>) -> u32 {
+    pub fn create_object_data(&mut self, meshes: Vec<MeshData>) -> u32 {
         let ids = meshes.iter().cloned().map(|m| self.add_mesh(m)).collect();
         let oid = self.next_object_id();
         let data = ObjectData {
@@ -179,7 +179,7 @@ impl Renderer {
     /*
      * Loads ObjectData into render buffers
      */
-    fn load_object_data(&mut self, data_id: u32) {
+    pub fn load_object_data(&mut self, data_id: u32) {
         let object_data = self.object_data.get(&data_id).unwrap();
         let meshes = object_data.clone().meshes;
 
@@ -193,8 +193,6 @@ impl Renderer {
                 index_start: self.last_index_index,
             };
             self.mesh_buffer_mapping.insert(mesh, info);
-            self.last_vertex_index += mesh_data.vertices.len() as u32;
-            self.last_index_index += mesh_data.indices.len() as u32;
 
             self.upload_to_vertex_buffer(&mesh_data, v_len);
             self.upload_to_index_buffer(&mesh_data, i_len);
@@ -204,7 +202,7 @@ impl Renderer {
         }
     }
 
-    fn upload_to_index_buffer(&mut self, mesh_data: &MeshData, i_len: u32) {
+    pub fn upload_to_index_buffer(&mut self, mesh_data: &MeshData, i_len: u32) {
         if self.last_index_index + i_len > self.index_buffer.len() as u32 {
             let old_buffer = self.index_buffer.clone();
             let new_capacity = (old_buffer.len() as u32 + i_len) * 2;
@@ -284,6 +282,17 @@ impl Renderer {
         for mesh_id in mesh_ids {
             self.add_indirect_draw(mesh_id);
         }
+    }
+    /*
+     * creates a new object instance from an object that was never uploaded
+     * returns the new id of OgjectData
+     * TODO: add deduplication here
+     */
+    pub fn instantiate_object(&mut self, meshes: Vec<MeshData>, instance: GPUInstance) -> u32 {
+        let id = self.create_object_data(meshes);
+        self.load_object_data(id);
+        self.add_object_instance(id, instance);
+        return id;
     }
     /*
      * update a allready present instance and change their transforms
