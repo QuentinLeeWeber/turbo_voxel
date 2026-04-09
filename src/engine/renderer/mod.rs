@@ -68,7 +68,6 @@ mod fs {
     );
 }
 mod camera;
-mod object_data;
 pub mod prelude;
 use prelude::*;
 

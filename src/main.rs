@@ -50,7 +50,6 @@ fn main() {
 
     let objects = vec![ObjectData {
         id: 1,
-        materials: Vec::new(),
         meshes: vec![MeshData {
             id: 1,
             vertices,
