@@ -1,8 +1,8 @@
 use crate::{
-    InstanceData,
     engine::camera::{Camera, CameraController, Projection},
+    game_object::{EndOfLife, GameObjectTrait},
 };
-use cgmath::{Deg, Point3, Quaternion, Rad, Vector3};
+use cgmath::{Deg, Point3, Rad};
 use std::{collections::HashMap, sync::Arc};
 use winit::{
     application::ApplicationHandler,
@@ -15,18 +15,12 @@ use winit::{
 pub mod camera;
 pub mod marching_cubes;
 mod marching_cubes_data;
-mod physics;
+pub mod physics;
 pub mod renderer;
 mod scene;
 pub mod world_gen;
 
 use renderer::Renderer;
-use scene::Scene;
-
-use crate::engine::renderer::{
-    ObjectDataID,
-    prelude::{GPUInstance, MeshData, ObjectData},
-};
 
 pub const CHUNK_WIDTH: usize = 16;
 
@@ -47,212 +41,16 @@ pub struct Chunk {
     pub amount: [[[f32; CHUNK_WIDTH]; CHUNK_WIDTH]; CHUNK_WIDTH],
 }
 
-use physics::CoordinateBorders;
-
-#[derive(Debug, Default, Clone, Copy)]
-struct Transform {
-    pos: [f32; 3],
-    rot: [f32; 3],
-}
-
-pub struct BoundingBox {
-    x: CoordinateBorders,
-    y: CoordinateBorders,
-    z: CoordinateBorders,
-}
-
-#[derive(Debug, Default, Clone, Copy)]
-enum HitBox {
-    #[default]
-    None,
-    Sphere {
-        transform: Transform,
-        radius: f32,
-    },
-    Cube {
-        transform: Transform,
-        size: f32,
-    },
-    Triangle {
-        point1: [f32; 3],
-        point2: [f32; 3],
-        point3: [f32; 3],
-    },
-}
-
 enum Event {
     SpawnObject(Box<dyn GameObjectTrait>),
 }
 
-impl HitBox {
-    pub fn get_bounding_box(&self) -> Option<BoundingBox> {
-        match self {
-            HitBox::None => None,
-            HitBox::Sphere { transform, radius } => Some(BoundingBox {
-                x: CoordinateBorders::new(transform.pos[0] - radius, transform.pos[0] + radius),
-                y: CoordinateBorders::new(transform.pos[1] - radius, transform.pos[1] + radius),
-                z: CoordinateBorders::new(transform.pos[2] - radius, transform.pos[2] + radius),
-            }),
-            HitBox::Cube { transform, size } => {
-                let max_dist = (3.0f32).sqrt() / 2. * size;
-                Some(BoundingBox {
-                    x: CoordinateBorders::new(
-                        transform.pos[0] - max_dist,
-                        transform.pos[0] + max_dist,
-                    ),
-                    y: CoordinateBorders::new(
-                        transform.pos[1] - max_dist,
-                        transform.pos[1] + max_dist,
-                    ),
-                    z: CoordinateBorders::new(
-                        transform.pos[2] - max_dist,
-                        transform.pos[2] + max_dist,
-                    ),
-                })
-            }
-            HitBox::Triangle {
-                point1,
-                point2,
-                point3,
-            } => {
-                let min_x = point1[0].min(point2[0].min(point3[0]));
-                let max_x = point1[0].max(point2[0].max(point3[0]));
-                let min_y = point1[1].min(point2[1].min(point3[1]));
-                let max_y = point1[1].max(point2[1].max(point3[1]));
-                let min_z = point1[2].min(point2[2].min(point3[2]));
-                let max_z = point1[2].max(point2[2].max(point3[2]));
-                Some(BoundingBox {
-                    x: CoordinateBorders::new(min_x, max_x),
-                    y: CoordinateBorders::new(min_y, max_y),
-                    z: CoordinateBorders::new(min_z, max_z),
-                })
-            }
-        }
-    }
-}
-
-trait GameObjectTrait {
-    fn get_id(&self) -> u32;
-    fn update(&mut self, engine: &mut Engine) -> EndOfLife;
-    fn get_transform(&self) -> Transform;
-    fn get_hitbox(&self) -> HitBox;
-    fn get_object_data(&self) -> ObjectDataID; //returns basic data like meshes needed for rendering
-}
-
-pub struct GameObject<T> {
-    pub data: T,
-    id: u32,
-    hitbox: HitBox,
-    control_function: Option<Box<dyn FnMut(&mut T, &mut Engine) -> EndOfLife>>,
-    transform: Transform,
-    object_data: ObjectDataID,
-}
-
-impl<T> GameObjectTrait for GameObject<T> {
-    fn get_id(&self) -> u32 {
-        self.id
-    }
-    fn update(&mut self, engine: &mut Engine) -> EndOfLife {
-        if let Some(control) = &mut self.control_function {
-            control(&mut self.data, engine)
-        } else {
-            EndOfLife(false)
-        }
-    }
-    fn get_transform(&self) -> Transform {
-        self.transform
-    }
-    fn get_hitbox(&self) -> HitBox {
-        self.hitbox
-    }
-    fn get_object_data(&self) -> ObjectDataID {
-        self.object_data
-    }
-}
-
-#[derive(Debug, Clone, Copy, Eq, PartialEq)]
-pub struct EndOfLife(bool);
-
-pub struct GameObjectBuilder<T> {
-    data: T,
-    hitbox: HitBox,
-    transform: Transform,
-    control_function: Option<Box<dyn FnMut(&mut T, &mut Engine) -> EndOfLife>>,
-    object_data: Vec<MeshData>,
-}
-
-impl<T: 'static> GameObjectBuilder<T> {
-    pub fn new(data: T) -> Self {
-        GameObjectBuilder {
-            data,
-            hitbox: Default::default(),
-            control_function: None,
-            transform: Default::default(),
-            object_data: Vec::new(),
-        }
-    }
-
-    pub fn with_hitbox(mut self, hitbox: HitBox) -> Self {
-        self.hitbox = hitbox;
-        self
-    }
-
-    pub fn with_control<F>(mut self, control: F) -> Self
-    where
-        F: FnMut(&mut T, &mut Engine) -> EndOfLife + 'static,
-    {
-        self.control_function = Some(Box::new(control));
-        self
-    }
-
-    pub fn with_transform(mut self, transform: Transform) -> Self {
-        self.transform = transform;
-        self
-    }
-
-    pub fn with_mesh(mut self, mesh: MeshData) -> Self {
-        self.object_data.push(mesh);
-        self
-    }
-
-    pub fn with_meshes(mut self, meshes: Vec<MeshData>) -> Self {
-        self.object_data.extend(meshes);
-        self
-    }
-
-    pub fn build(self, engine: &mut Engine) {
-        let id = engine.game_object_id_count;
-        engine.game_object_id_count += 1;
-
-        let object_data = engine.renderer.instantiate_object(
-            self.object_data,
-            InstanceData::new(
-                Vector3::new(
-                    self.transform.pos[0],
-                    self.transform.pos[1],
-                    self.transform.pos[2],
-                ),
-                Quaternion::new(0.0, 0.0, 0.0, 0.0),
-            ),
-        );
-
-        engine.add_game_object(Box::new(GameObject {
-            id,
-            data: self.data,
-            hitbox: self.hitbox,
-            control_function: self.control_function,
-            transform: self.transform,
-            object_data,
-        }));
-    }
-}
-
 pub struct Engine {
-    game_object_id_count: u32,
-    scene: HashMap<u32, Box<dyn GameObjectTrait>>,
     camera: Camera,
     camera_controller: CameraController,
+    pub game_object_id_count: u32,
     pub renderer: Renderer,
+    scene: HashMap<u32, Box<dyn GameObjectTrait>>,
 }
 
 impl Engine {
@@ -291,7 +89,7 @@ impl Engine {
         }
     }
 
-    fn add_game_object(&mut self, object: Box<dyn GameObjectTrait>) {
+    pub fn add_game_object(&mut self, object: Box<dyn GameObjectTrait>) {
         self.scene.insert(object.get_id(), object);
     }
 }

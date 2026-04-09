@@ -1,4 +1,4 @@
-use crate::engine::GameObjectTrait;
+use crate::game_object::GameObjectTrait;
 use std::collections::HashMap;
 
 pub struct Scene {

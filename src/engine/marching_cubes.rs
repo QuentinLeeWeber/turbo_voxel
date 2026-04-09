@@ -155,7 +155,7 @@ impl Chunk {
             for y in 0..16 {
                 for x in 0..16 {
                     let idx = self.get_table_idx(voxels, x, y, z);
-                    let case = &triangle_table[idx as usize];
+                    let case = &TRIANGLE_TABLE[idx as usize];
 
                     if case.count == 0 {
                         continue;
@@ -198,7 +198,7 @@ impl Chunk {
 }
 
 pub fn edge_idx_to_point_hash(idx: i8, pos: [i32; 3], offset: [usize; 3]) -> [isize; 4] {
-    let mut hash = edge_hashmap_data[idx as usize];
+    let mut hash = EDGE_HASHMAP_DATA[idx as usize];
     hash[0] += (pos[0] as isize) * (CHUNK_WIDTH as isize) + (offset[0] as isize);
     hash[1] += (pos[1] as isize) * (CHUNK_WIDTH as isize) + (offset[1] as isize);
     hash[2] += (pos[2] as isize) * (CHUNK_WIDTH as isize) + (offset[2] as isize);
@@ -212,7 +212,7 @@ pub fn edge_idx_to_point_coord(
     pos: [usize; 3],
     idx: i8,
 ) -> [f32; 3] {
-    let points = edge_vertex_indices[idx as usize];
+    let points = EDGE_VERTEX_INDICE[idx as usize];
     let p1 = [points[0] & 1, (points[0] >> 1) & 1, (points[0] >> 2) & 1];
     let p2 = [points[1] & 1, (points[1] >> 1) & 1, (points[1] >> 2) & 1];
 

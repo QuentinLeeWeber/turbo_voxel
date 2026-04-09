@@ -1,9 +1,9 @@
 mod engine;
+mod game_object;
+mod hit_box;
 
 use engine::{Engine, renderer::prelude::*};
 use winit::{event_loop::EventLoop, platform::x11::EventLoopBuilderExtX11};
-
-use crate::engine::GameObjectBuilder;
 
 fn main() {
     let event_loop = EventLoop::builder().with_any_thread(true).build().unwrap();
@@ -51,7 +51,7 @@ fn main() {
     let mut engine = Engine::new(&event_loop);
 
     struct ObjectData {}
-    GameObjectBuilder::<ObjectData>::new(ObjectData {})
+    game_object::GameObjectBuilder::<ObjectData>::new(ObjectData {})
         .with_mesh(mesh)
         .build(&mut engine);
 

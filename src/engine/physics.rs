@@ -1,4 +1,7 @@
-use crate::engine::{BoundingBox, GameObjectTrait, HitBox};
+use crate::{
+    engine::GameObjectTrait,
+    hit_box::{BoundingBox, HitBox},
+};
 use std::collections::HashMap;
 
 pub struct CoordinateBorders {
@@ -44,7 +47,7 @@ impl<'a> IntoIterator for &'a Octree {
 }
 
 impl Octree {
-    pub fn add_element(&mut self, obj: &crate::engine::HitBox) -> Option<u64> {
+    pub fn add_element(&mut self, obj: &crate::hit_box::HitBox) -> Option<u64> {
         let bounding_box_opt = obj.get_bounding_box();
         bounding_box_opt.as_ref()?;
         let bounding_box = bounding_box_opt.unwrap();
