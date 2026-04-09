@@ -1,5 +1,8 @@
-use crate::InstanceData;
-use cgmath::{Quaternion, Vector3};
+use crate::{
+    InstanceData,
+    engine::camera::{Camera, CameraController, Projection},
+};
+use cgmath::{Deg, Point3, Quaternion, Rad, Vector3};
 use std::collections::HashMap;
 use std::sync::Arc;
 use winit::{
@@ -10,6 +13,7 @@ use winit::{
     window::{Window, WindowId},
 };
 
+pub mod camera;
 pub mod marching_cubes;
 mod marching_cubes_data;
 mod physics;
@@ -247,6 +251,8 @@ impl<T: 'static> GameObjectBuilder<T> {
 pub struct Engine {
     game_object_id_count: u32,
     scene: HashMap<u32, Box<dyn GameObjectTrait>>,
+    camera: Camera,
+    camera_controller: CameraController,
     pub renderer: Renderer,
 }
 
@@ -256,6 +262,13 @@ impl Engine {
             game_object_id_count: 0,
             scene: HashMap::new(),
             renderer: Renderer::new(&event_loop),
+            camera: Camera::new(
+                Point3::new(0.0, 0.0, 0.0),
+                Rad::from(Deg(90.0)),
+                Rad::from(Deg(0.0)),
+                Projection::new(10, 10, Rad::from(Deg(90.0)), 0.1, 10.0),
+            ),
+            camera_controller: CameraController::new(1.0, 2.0),
         }
     }
 
@@ -291,7 +304,7 @@ impl ApplicationHandler for Engine {
                 .create_window(Window::default_attributes())
                 .unwrap(),
         );
-        self.renderer.resize(window);
+        self.renderer.resize(window, &mut self.camera);
     }
     fn device_event(
         &mut self,
@@ -300,9 +313,7 @@ impl ApplicationHandler for Engine {
         event: winit::event::DeviceEvent,
     ) {
         if let DeviceEvent::MouseMotion { delta } = event {
-            self.renderer
-                .camera_controller
-                .proccess_mouse(delta.0, delta.1);
+            self.camera_controller.proccess_mouse(delta.0, delta.1);
 
             if let Some(render_data) = &self.renderer.render_data {
                 render_data.window.request_redraw();
@@ -321,6 +332,8 @@ impl ApplicationHandler for Engine {
             }
             WindowEvent::RedrawRequested => {
                 self.update();
+                self.camera_controller.update_camera(&mut self.camera);
+                self.renderer.update_camera_uniform(&mut self.camera);
                 self.renderer.render();
             }
             WindowEvent::KeyboardInput {
@@ -332,7 +345,7 @@ impl ApplicationHandler for Engine {
                     },
                 ..
             } => {
-                self.renderer.camera_controller.process_keyboard(key, state);
+                self.camera_controller.process_keyboard(key, state);
                 let data = self.renderer.render_data.as_mut();
 
                 if let Some(d) = data {
@@ -340,7 +353,7 @@ impl ApplicationHandler for Engine {
                 }
             }
             WindowEvent::MouseWheel { delta, .. } => {
-                self.renderer.camera_controller.process_scroll(&delta);
+                self.camera_controller.process_scroll(&delta);
                 if let Some(d) = self.renderer.render_data.as_ref() {
                     d.window.request_redraw();
                 }
