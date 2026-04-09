@@ -342,7 +342,7 @@ pub fn calculate_collisions(entities: &mut HashMap<u32, Box<dyn GameObject>>) {
             continue;
         }
         let key = key.unwrap();
-        octree_elements.entry(key).or_insert_with(std::vec::Vec::new);
+        octree_elements.entry(key).or_default();
         octree_elements
             .get_mut(&key)
             .unwrap()
