@@ -1,14 +1,11 @@
-use std::{
-    f32::consts::PI,
-    time::Instant,
-};
-
 use cgmath::*;
+use std::{f32::consts::PI, time::Instant};
 use winit::{
     dpi::PhysicalPosition,
     event::{ElementState, MouseScrollDelta},
     keyboard::KeyCode,
 };
+
 #[derive(Debug)]
 pub struct Camera {
     pub position: Point3<f32>,
@@ -78,7 +75,13 @@ pub struct Projection {
 }
 
 impl Projection {
-    pub fn new<F: Into<Rad<f32>>>(width: u32, _height: u32, fovy: F, znear: f32, zfar: f32) -> Self {
+    pub fn new<F: Into<Rad<f32>>>(
+        width: u32,
+        _height: u32,
+        fovy: F,
+        znear: f32,
+        zfar: f32,
+    ) -> Self {
         Self {
             aspect: width as f32,
             fovy: fovy.into(),

@@ -1,5 +1,4 @@
-use crate::engine::BoundingBox;
-use crate::engine::{GameObjectTrait, HitBox};
+use crate::engine::{BoundingBox, GameObjectTrait, HitBox};
 use std::collections::HashMap;
 
 pub struct CoordinateBorders {

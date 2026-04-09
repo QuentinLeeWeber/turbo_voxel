@@ -1,17 +1,9 @@
 mod engine;
 
-use cgmath::Deg;
-use cgmath::InnerSpace;
-use cgmath::Quaternion;
-use cgmath::Rotation3;
-use engine::Engine;
-use engine::marching_cubes::Voxels;
-use engine::renderer::prelude::*;
-use engine::world_gen;
+use engine::{Engine, renderer::prelude::*};
 use winit::{event_loop::EventLoop, platform::x11::EventLoopBuilderExtX11};
 
 use crate::engine::GameObjectBuilder;
-use crate::engine::renderer;
 
 fn main() {
     let event_loop = EventLoop::builder().with_any_thread(true).build().unwrap();

@@ -1,7 +1,6 @@
 use crate::InstanceData;
 use cgmath::{Quaternion, Vector3};
-use std::collections::HashMap;
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 use winit::{
     application::ApplicationHandler,
     event::{DeviceEvent, KeyEvent, WindowEvent},

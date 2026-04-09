@@ -1,56 +1,45 @@
-use crate::engine::marching_cubes::Mesh;
 use cgmath::{Deg, Point3, Rad};
-use std::collections::HashMap;
-use std::ops::RangeInclusive;
-use std::sync::Arc;
-use vulkano::buffer::{Buffer, BufferCreateInfo, BufferUsage, Subbuffer};
-use vulkano::command_buffer::allocator::StandardCommandBufferAllocator;
-use vulkano::command_buffer::{
-    AutoCommandBufferBuilder, DrawIndexedIndirectCommand, RenderPassBeginInfo,
-};
-use vulkano::descriptor_set::allocator::StandardDescriptorSetAllocator;
-use vulkano::descriptor_set::{DescriptorSet, WriteDescriptorSet};
-use vulkano::device::{Device, DeviceCreateInfo, Queue, QueueCreateInfo};
-use vulkano::format::Format;
-use vulkano::swapchain::{
-    Swapchain, SwapchainCreateInfo, SwapchainPresentInfo, acquire_next_image,
-};
-use vulkano::sync::GpuFuture;
-use vulkano::{Validated, VulkanError, single_pass_renderpass, sync};
+use std::{collections::HashMap, ops::RangeInclusive, sync::Arc};
 use vulkano::{
-    VulkanLibrary,
-    device::{DeviceExtensions, QueueFlags, physical::PhysicalDevice},
+    Validated, VulkanError, VulkanLibrary,
+    buffer::{Buffer, BufferCreateInfo, BufferUsage, Subbuffer},
+    command_buffer::{
+        AutoCommandBufferBuilder, DrawIndexedIndirectCommand, RenderPassBeginInfo,
+        allocator::StandardCommandBufferAllocator,
+    },
+    descriptor_set::{
+        DescriptorSet, WriteDescriptorSet, allocator::StandardDescriptorSetAllocator,
+    },
+    device::{
+        Device, DeviceCreateInfo, DeviceExtensions, Queue, QueueCreateInfo, QueueFlags,
+        physical::PhysicalDevice,
+    },
+    format::Format,
+    image::{Image, ImageCreateInfo, ImageUsage, view::ImageView},
     instance::{Instance, InstanceCreateFlags, InstanceCreateInfo},
-    swapchain::Surface,
-};
-use vulkano::{
-    image::view::ImageView,
+    memory::allocator::{AllocationCreateInfo, MemoryTypeFilter, StandardMemoryAllocator},
     pipeline::{
-        Pipeline,
+        DynamicState, GraphicsPipeline, Pipeline, PipelineLayout, PipelineShaderStageCreateInfo,
+        graphics::GraphicsPipelineCreateInfo,
         graphics::{
             color_blend::{ColorBlendAttachmentState, ColorBlendState},
             depth_stencil::{DepthState, DepthStencilState},
             input_assembly::InputAssemblyState,
             multisample::MultisampleState,
             rasterization::RasterizationState,
+            subpass::PipelineSubpassType,
+            vertex_input::{Vertex, VertexDefinition},
             viewport::{Viewport, ViewportState},
         },
-    },
-};
-use vulkano::{
-    image::{Image, ImageCreateInfo, ImageUsage},
-    pipeline::graphics::{
-        subpass::PipelineSubpassType,
-        vertex_input::{Vertex, VertexDefinition},
-    },
-};
-use vulkano::{
-    memory::allocator::{AllocationCreateInfo, MemoryTypeFilter, StandardMemoryAllocator},
-    pipeline::{
-        DynamicState, GraphicsPipeline, PipelineLayout, PipelineShaderStageCreateInfo,
-        graphics::GraphicsPipelineCreateInfo, layout::PipelineDescriptorSetLayoutCreateInfo,
+        layout::PipelineDescriptorSetLayoutCreateInfo,
     },
     render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass},
+    single_pass_renderpass,
+    swapchain::{
+        Surface, Swapchain, SwapchainCreateInfo, SwapchainPresentInfo, acquire_next_image,
+    },
+    sync,
+    sync::GpuFuture,
 };
 use winit::raw_window_handle::HasDisplayHandle;
 use winit::window::Window;

@@ -1,6 +1,8 @@
-use std::collections::HashMap;
-use std::ops::{Div, Rem};
-use std::vec::Vec;
+use std::{
+    collections::HashMap,
+    ops::{Div, Rem},
+    vec::Vec,
+};
 
 use super::{CHUNK_WIDTH, Chunk, Material, marching_cubes_data::*};
 
@@ -211,16 +213,8 @@ pub fn edge_idx_to_point_coord(
     idx: i8,
 ) -> [f32; 3] {
     let points = edge_vertex_indices[idx as usize];
-    let p1 = [
-        points[0] & 1,
-        (points[0] >> 1) & 1,
-        (points[0] >> 2) & 1,
-    ];
-    let p2 = [
-        points[1] & 1,
-        (points[1] >> 1) & 1,
-        (points[1] >> 2) & 1,
-    ];
+    let p1 = [points[0] & 1, (points[0] >> 1) & 1, (points[0] >> 2) & 1];
+    let p2 = [points[1] & 1, (points[1] >> 1) & 1, (points[1] >> 2) & 1];
 
     let val1 = chunk.get_voxel(
         voxels,
