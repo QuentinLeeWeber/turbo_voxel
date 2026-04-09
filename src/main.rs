@@ -47,7 +47,7 @@ fn main() {
         20, 21, 22, 20, 22, 23, // Links
     ];
 
-    let mesh = MeshData {
+    let _mesh = MeshData {
         vertices,
         indices,
         material_id: 0,

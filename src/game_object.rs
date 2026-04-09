@@ -3,7 +3,7 @@ use crate::engine::{
     renderer::{ObjectDataID, prelude::*},
 };
 use crate::hit_box::HitBox;
-use cgmath::{Deg, Quaternion, Rad, Rotation3, Vector3, Zero};
+use cgmath::{Quaternion, Vector3, Zero};
 
 #[derive(Debug, Clone, Copy)]
 pub struct Transform {
@@ -109,7 +109,7 @@ impl<T: 'static> GameObjectBuilder<T> {
         self
     }
 
-    pub fn build(mut self, engine: &mut Engine) {
+    pub fn build(self, engine: &mut Engine) {
         let id = engine.game_object_id_count;
         engine.game_object_id_count += 1;
 

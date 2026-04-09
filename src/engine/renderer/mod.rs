@@ -1,5 +1,4 @@
 use crate::engine::camera::{Camera, Projection};
-use crate::engine::marching_cubes::Mesh;
 use cgmath::{Deg, Point3, Rad};
 use std::{collections::HashMap, ops::RangeInclusive, sync::Arc};
 use vulkano::device::DeviceFeatures;
@@ -166,7 +165,7 @@ impl Renderer {
             meshes: ids,
         };
         self.object_data.insert(oid, data);
-        return ObjectDataID(oid);
+        ObjectDataID(oid)
         //TODO: check if fitting object is present
     }
 
@@ -293,10 +292,10 @@ impl Renderer {
         self.load_object_data(id.0);
         let gi = GPUInstance {
             instance_id: id.0,
-            instance: instance,
+            instance,
         };
         self.add_object_instance(id.0, gi);
-        return id;
+        id
     }
     /*
      * update a allready present instance and change their transforms

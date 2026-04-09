@@ -1,6 +1,5 @@
 use std::{
     collections::HashMap,
-    ops::{Div, Rem},
     vec::Vec,
 };
 
@@ -395,15 +394,15 @@ impl Mesh {
     }
 }
 
-impl Into<crate::engine::renderer::prelude::MeshData> for Mesh {
-    fn into(self) -> crate::engine::renderer::prelude::MeshData {
-        let vertices: Vec<crate::engine::renderer::prelude::VertexData> = self
+impl From<Mesh> for crate::engine::renderer::prelude::MeshData {
+    fn from(val: Mesh) -> Self {
+        let vertices: Vec<crate::engine::renderer::prelude::VertexData> = val
             .vertices
             .into_iter()
             .map(|v| VertexData::new(v.pos, v.normal))
             .collect();
 
-        let indices: Vec<u32> = self
+        let indices: Vec<u32> = val
             .faces
             .into_iter()
             .map(|f| (f.points[0] as u32, f.points[1] as u32, f.points[2] as u32))

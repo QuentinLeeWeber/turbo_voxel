@@ -6,7 +6,7 @@ use cgmath::{Deg, Point3, Rad};
 use std::{collections::HashMap, sync::Arc};
 use winit::{
     application::ApplicationHandler,
-    event::{DeviceEvent, ElementState, KeyEvent, WindowEvent},
+    event::{DeviceEvent, ElementState, WindowEvent},
     event_loop::ActiveEventLoop,
     keyboard::{KeyCode, PhysicalKey},
     window::{Window, WindowId},
@@ -137,11 +137,10 @@ impl ApplicationHandler for Engine {
             }
 
             WindowEvent::KeyboardInput { event, .. } => {
-                if let ElementState::Pressed = event.state {
-                    if let PhysicalKey::Code(KeyCode::Escape) = event.physical_key {
+                if let ElementState::Pressed = event.state
+                    && let PhysicalKey::Code(KeyCode::Escape) = event.physical_key {
                         self.renderer.set_cursor_grab(false);
                     }
-                }
 
                 if let PhysicalKey::Code(key) = event.physical_key {
                     self.camera_controller.process_keyboard(key, event.state);
