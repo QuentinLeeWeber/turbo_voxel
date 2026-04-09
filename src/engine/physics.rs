@@ -320,6 +320,8 @@ impl<'a> CollisionStack<'a> {
     }
 }
 
+const MESH_GAMEOBJECT_ID: u32 = u32::MAX;
+
 pub fn calculate_collisions(entities: &mut HashMap<u32, Box<dyn GameObject>>) -> () {
     let mut octree_elements: HashMap<u64, Vec<(u32, HitBox)>> = HashMap::new();
     let mut octree = Octree::new(
@@ -351,6 +353,7 @@ pub fn calculate_collisions(entities: &mut HashMap<u32, Box<dyn GameObject>>) ->
             .unwrap()
             .push((*index, hit_box));
     }
+    let mut collisions: HashMap<u32, Vec<u32>> = HashMap::new();
     let mut stack: CollisionStack = CollisionStack::new();
     stack.add_node_elements(&octree_elements, 0);
     let mut prev_node: u64 = 0;
