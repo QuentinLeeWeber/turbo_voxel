@@ -329,10 +329,7 @@ impl Into<crate::engine::renderer::prelude::MeshData> for Mesh {
         let vertices: Vec<crate::engine::renderer::prelude::VertexData> = self
             .vertices
             .into_iter()
-            .map(|v| VertexData {
-                position: v.pos,
-                normal: v.normal,
-            })
+            .map(|v| VertexData::new(v.pos, v.normal))
             .collect();
 
         let indices: Vec<u32> = self

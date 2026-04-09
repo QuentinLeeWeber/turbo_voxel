@@ -41,12 +41,22 @@ pub struct VertexData {
     pub position: [f32; 3],
     #[format(R32G32B32_SFLOAT)]
     pub normal: [f32; 3],
+    #[format(R32G32B32_SFLOAT)]
+    pub color: [f32; 3],
 }
 impl VertexData {
     pub fn new(pos: [f32; 3], normal: [f32; 3]) -> VertexData {
         VertexData {
             position: pos,
             normal,
+            color: [1.0, 1.0, 1.0],
+        }
+    }
+    pub fn new_with_color(pos: [f32; 3], normal: [f32; 3], color: [f32; 3]) -> VertexData {
+        VertexData {
+            position: pos,
+            normal,
+            color,
         }
     }
 }
