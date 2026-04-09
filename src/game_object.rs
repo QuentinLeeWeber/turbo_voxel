@@ -3,7 +3,7 @@ use crate::engine::{
     renderer::{ObjectDataID, prelude::*},
 };
 use crate::hit_box::HitBox;
-use cgmath::{Quaternion, Vector3};
+use cgmath::{Deg, Quaternion, Rad, Rotation3, Vector3};
 
 #[derive(Debug, Default, Clone, Copy)]
 pub struct Transform {
@@ -104,6 +104,10 @@ impl<T: 'static> GameObjectBuilder<T> {
         let id = engine.game_object_id_count;
         engine.game_object_id_count += 1;
 
+        let quaternion = Quaternion::from_angle_z(Rad::from(Deg(self.transform.rot[2])))
+            * Quaternion::from_angle_y(Rad::from(Deg(self.transform.rot[1])))
+            * Quaternion::from_angle_x(Rad::from(Deg(self.transform.rot[0])));
+
         let object_data = engine.renderer.instantiate_object(
             self.object_data,
             InstanceData::new(
@@ -112,7 +116,7 @@ impl<T: 'static> GameObjectBuilder<T> {
                     self.transform.pos[1],
                     self.transform.pos[2],
                 ),
-                Quaternion::new(0.0, 0.0, 0.0, 0.0),
+                quaternion,
             ),
         );
 

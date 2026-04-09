@@ -5,7 +5,7 @@ mod hit_box;
 use engine::{Engine, renderer::prelude::*};
 use winit::{event_loop::EventLoop, platform::x11::EventLoopBuilderExtX11};
 
-use crate::engine::marching_cubes;
+use crate::{engine::marching_cubes, game_object::Transform};
 
 fn main() {
     let event_loop = EventLoop::builder().with_any_thread(true).build().unwrap();
@@ -71,6 +71,10 @@ fn main() {
     struct ObjectData {}
     game_object::GameObjectBuilder::<ObjectData>::new(ObjectData {})
         .with_mesh(mesh)
+        .with_transform(Transform {
+            pos: [0.0, 0.0, 0.0],
+            rot: [90.0, 0.0, 0.0],
+        })
         .build(&mut engine);
 
     event_loop.set_control_flow(winit::event_loop::ControlFlow::Poll);
