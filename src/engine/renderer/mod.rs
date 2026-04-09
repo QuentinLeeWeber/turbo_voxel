@@ -389,6 +389,8 @@ impl Renderer {
     }
 
     pub fn render(&mut self) {
+        self.update_camera();
+
         let data = self.render_data.as_mut().unwrap();
         let layout = data.pipeline.layout().set_layouts().get(0).unwrap();
         let window_size = data.window.as_ref().inner_size();
@@ -486,6 +488,23 @@ impl Renderer {
                 println!("failed to flush future: {e}");
                 data.previous_frame_end = Some(sync::now(self.device.clone()).boxed());
             }
+        }
+    }
+
+    fn update_camera(&mut self) {
+        let camera_uniform = vs::Camera {
+            view_position: [
+                self.camera.position.x,
+                self.camera.position.y,
+                self.camera.position.z,
+                0.0,
+            ]
+            .into(),
+            view_proj: self.camera.calc_matrix().into(),
+        };
+
+        if let Ok(mut mapping) = self.camera_buffer.write() {
+            *mapping = camera_uniform;
         }
     }
 
