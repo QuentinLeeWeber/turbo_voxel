@@ -1,8 +1,8 @@
-use crate::engine::GameObject;
+use crate::engine::GameObjectTrait;
 use std::collections::HashMap;
 
 pub struct Scene {
-    entities: HashMap<u32, Box<dyn GameObject>>,
+    entities: HashMap<u32, Box<dyn GameObjectTrait>>,
     entity_id_counter: u32,
 }
 
@@ -14,7 +14,7 @@ impl Scene {
         }
     }
 
-    pub fn add_entity(&mut self, entity: Box<dyn GameObject>) {
+    pub fn add_entity(&mut self, entity: Box<dyn GameObjectTrait>) {
         self.entities.insert(self.entity_id_counter, entity);
         self.entity_id_counter += 1;
     }

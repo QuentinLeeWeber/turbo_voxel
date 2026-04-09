@@ -1,3 +1,6 @@
+use crate::InstanceData;
+use cgmath::{Quaternion, Vector3};
+use std::collections::HashMap;
 use std::sync::Arc;
 use winit::{
     application::ApplicationHandler,
@@ -7,7 +10,7 @@ use winit::{
     window::{Window, WindowId},
 };
 
-mod marching_cubes;
+pub mod marching_cubes;
 mod marching_cubes_data;
 mod physics;
 pub mod renderer;
@@ -17,7 +20,10 @@ pub mod world_gen;
 use renderer::Renderer;
 use scene::Scene;
 
-use crate::engine::renderer::prelude::{GPUInstance, ObjectData};
+use crate::engine::renderer::{
+    ObjectDataID,
+    prelude::{GPUInstance, MeshData, ObjectData},
+};
 
 pub const CHUNK_WIDTH: usize = 16;
 
@@ -40,6 +46,7 @@ pub struct Chunk {
 
 use physics::CoordinateBorders;
 
+#[derive(Debug, Default, Clone, Copy)]
 struct Transform {
     pos: [f32; 3],
     rot: [f32; 3],
@@ -51,7 +58,9 @@ pub struct BoundingBox {
     z: CoordinateBorders,
 }
 
+#[derive(Debug, Default, Clone, Copy)]
 enum HitBox {
+    #[default]
     None,
     Sphere {
         transform: Transform,
@@ -67,6 +76,11 @@ enum HitBox {
         point3: [f32; 3],
     },
 }
+
+enum Event {
+    SpawnObject(Box<dyn GameObjectTrait>),
+}
+
 impl HitBox {
     pub fn get_bounding_box(&self) -> Option<BoundingBox> {
         match self {
@@ -114,34 +128,160 @@ impl HitBox {
     }
 }
 
-enum Event {
-    SpawnObject(Box<dyn GameObject>),
-}
-
-trait GameObject {
+trait GameObjectTrait {
     fn get_id(&self) -> u32;
-    fn update(&mut self);
+    fn update(&mut self, engine: &mut Engine) -> EndOfLife;
     fn get_transform(&self) -> Transform;
     fn get_hitbox(&self) -> HitBox;
-    fn get_object_data(&self) -> ObjectData; //returns basic data like meshes needed for rendering
-    fn get_instance_data(&self) -> GPUInstance; //returns the instance transforms
-    fn notify(&mut self) -> Vec<Event>;
+    fn get_object_data(&self) -> ObjectDataID; //returns basic data like meshes needed for rendering
+}
+
+pub struct GameObject<T> {
+    pub data: T,
+    id: u32,
+    hitbox: HitBox,
+    control_function: Option<Box<dyn FnMut(&mut T, &mut Engine) -> EndOfLife>>,
+    transform: Transform,
+    object_data: ObjectDataID,
+}
+
+impl<T> GameObjectTrait for GameObject<T> {
+    fn get_id(&self) -> u32 {
+        self.id
+    }
+    fn update(&mut self, engine: &mut Engine) -> EndOfLife {
+        if let Some(control) = &mut self.control_function {
+            control(&mut self.data, engine)
+        } else {
+            EndOfLife(false)
+        }
+    }
+    fn get_transform(&self) -> Transform {
+        self.transform
+    }
+    fn get_hitbox(&self) -> HitBox {
+        self.hitbox
+    }
+    fn get_object_data(&self) -> ObjectDataID {
+        self.object_data
+    }
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub struct EndOfLife(bool);
+
+pub struct GameObjectBuilder<T> {
+    data: T,
+    hitbox: HitBox,
+    transform: Transform,
+    control_function: Option<Box<dyn FnMut(&mut T, &mut Engine) -> EndOfLife>>,
+    object_data: Vec<MeshData>,
+}
+
+impl<T: 'static> GameObjectBuilder<T> {
+    pub fn new(data: T) -> Self {
+        GameObjectBuilder {
+            data,
+            hitbox: Default::default(),
+            control_function: None,
+            transform: Default::default(),
+            object_data: Vec::new(),
+        }
+    }
+
+    pub fn with_hitbox(mut self, hitbox: HitBox) -> Self {
+        self.hitbox = hitbox;
+        self
+    }
+
+    pub fn with_control<F>(mut self, control: F) -> Self
+    where
+        F: FnMut(&mut T, &mut Engine) -> EndOfLife + 'static,
+    {
+        self.control_function = Some(Box::new(control));
+        self
+    }
+
+    pub fn with_transform(mut self, transform: Transform) -> Self {
+        self.transform = transform;
+        self
+    }
+
+    pub fn with_mesh(mut self, mesh: MeshData) -> Self {
+        self.object_data.push(mesh);
+        self
+    }
+
+    pub fn with_meshes(mut self, meshes: Vec<MeshData>) -> Self {
+        self.object_data.extend(meshes);
+        self
+    }
+
+    pub fn build(self, engine: &mut Engine) {
+        let id = engine.game_object_id_count;
+        engine.game_object_id_count += 1;
+
+        let object_data = engine.renderer.instantiate_object(
+            self.object_data,
+            InstanceData::new(
+                Vector3::new(
+                    self.transform.pos[0],
+                    self.transform.pos[1],
+                    self.transform.pos[2],
+                ),
+                Quaternion::new(0.0, 0.0, 0.0, 0.0),
+            ),
+        );
+
+        engine.add_game_object(Box::new(GameObject {
+            id,
+            data: self.data,
+            hitbox: self.hitbox,
+            control_function: self.control_function,
+            transform: self.transform,
+            object_data,
+        }));
+    }
 }
 
 pub struct Engine {
-    scene: Scene,
+    game_object_id_count: u32,
+    scene: HashMap<u32, Box<dyn GameObjectTrait>>,
     pub renderer: Renderer,
 }
 
 impl Engine {
-    pub fn new(event_loop: &winit::event_loop::EventLoop<()>, objects: Vec<ObjectData>) -> Self {
+    pub fn new(event_loop: &winit::event_loop::EventLoop<()>) -> Self {
         Self {
-            scene: Scene::new(),
-            renderer: Renderer::new(&event_loop, objects), // TODO: hier alle Objekte der Szene übergeben.
+            game_object_id_count: 0,
+            scene: HashMap::new(),
+            renderer: Renderer::new(&event_loop),
         }
     }
 
-    fn update(&mut self) {}
+    fn update(&mut self) {
+        let mut index: u32 = 0;
+        loop {
+            let object = self.scene.remove(&index);
+            if let Some(mut object) = object {
+                match object.update(self) {
+                    EndOfLife(true) => {
+                        index -= 1;
+                    }
+                    EndOfLife(false) => {
+                        self.scene.insert(object.get_id(), object);
+                        index += 1;
+                    }
+                }
+            } else {
+                break;
+            }
+        }
+    }
+
+    fn add_game_object(&mut self, object: Box<dyn GameObjectTrait>) {
+        self.scene.insert(object.get_id(), object);
+    }
 }
 
 impl ApplicationHandler for Engine {

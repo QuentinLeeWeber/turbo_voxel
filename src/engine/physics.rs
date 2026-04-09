@@ -1,5 +1,5 @@
 use crate::engine::BoundingBox;
-use crate::engine::{GameObject, HitBox};
+use crate::engine::{GameObjectTrait, HitBox};
 use std::collections::HashMap;
 
 pub struct CoordinateBorders {
@@ -12,10 +12,7 @@ impl CoordinateBorders {
         (self.upper + self.lower) / 2.
     }
     pub fn new(lower: f32, upper: f32) -> Self {
-        Self {
-            lower,
-            upper,
-        }
+        Self { lower, upper }
     }
     pub fn from_parent(parent: &CoordinateBorders, lower_half: bool) -> Self {
         if lower_half {
@@ -227,11 +224,7 @@ impl OctreeNode {
         )
     }
     pub fn get_idx_parent(idx: u64) -> Option<u64> {
-        if idx != 0 {
-            Some((idx - 1) / 8)
-        } else {
-            None
-        }
+        if idx != 0 { Some((idx - 1) / 8) } else { None }
     }
     pub fn has_children(idx: u64) -> bool {
         let lowest_node_cutoff = u64::MAX / 8 - 1;
@@ -319,7 +312,7 @@ impl<'a> CollisionStack<'a> {
 
 const MESH_GAMEOBJECT_ID: u32 = u32::MAX;
 
-pub fn calculate_collisions(entities: &mut HashMap<u32, Box<dyn GameObject>>) {
+pub fn calculate_collisions(entities: &mut HashMap<u32, Box<dyn GameObjectTrait>>) {
     let mut octree_elements: HashMap<u64, Vec<(u32, HitBox)>> = HashMap::new();
     let mut octree = Octree::new(
         CoordinateBorders {

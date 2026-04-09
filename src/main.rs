@@ -5,12 +5,15 @@ use cgmath::InnerSpace;
 use cgmath::Quaternion;
 use cgmath::Rotation3;
 use engine::Engine;
+use engine::marching_cubes::Voxels;
 use engine::renderer::prelude::*;
 use engine::world_gen;
 use winit::{event_loop::EventLoop, platform::x11::EventLoopBuilderExtX11};
 
+use crate::engine::GameObjectBuilder;
+use crate::engine::renderer;
+
 fn main() {
-    world_gen::generate_chunk(1, 1, 1);
     let event_loop = EventLoop::builder().with_any_thread(true).build().unwrap();
     let vertices = vec![
         VertexData::new([-0.5, -0.5, 0.5], [0.0, 0.0, 1.0]), // 0
@@ -47,28 +50,19 @@ fn main() {
         16, 17, 18, 16, 18, 19, // Rechts
         20, 21, 22, 20, 22, 23, // Links
     ];
+    let mesh = MeshData {
+        vertices,
+        indices,
+        material_id: 0,
+    };
 
-    let objects = vec![ObjectData {
-        id: 1,
-        meshes: vec![MeshData {
-            id: 1,
-            vertices,
-            indices,
-            material_id: 0,
-        }],
-    }];
-    let mut engine = Engine::new(&event_loop, objects); //TODO: hier alle Objekte der Szene übergeben.
-    let axis = cgmath::Vector3::new(0.5, 0.5, 0.1).normalize();
-    engine.renderer.add_object_instance(
-        1,
-        GPUInstance {
-            instance_id: 1,
-            instance: InstanceData::new(
-                cgmath::Vector3::new(-0.1, 0.3, -0.02),
-                Quaternion::from_axis_angle(axis, Deg(10.0)),
-            ),
-        },
-    );
+    let mut engine = Engine::new(&event_loop);
+
+    struct ObjectData {}
+    GameObjectBuilder::<ObjectData>::new(ObjectData {})
+        .with_mesh(mesh)
+        .build(&mut engine);
+
     event_loop.set_control_flow(winit::event_loop::ControlFlow::Poll);
     event_loop.run_app(&mut engine).unwrap();
 }
