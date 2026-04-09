@@ -72,7 +72,7 @@ fn ridged_noise(offset_x: i32, offset_y: i32) -> Box<[[f32; CHUNK_WIDTH]; CHUNK_
 
     for x in 0..CHUNK_WIDTH {
         for y in 0..CHUNK_WIDTH {
-            let mut amplitude = 1.0;
+            let mut amplitude = 3.0;
             let mut frequency = 1.0;
             let mut noise_sum = 0.0;
             let mut weight = 1.0;
@@ -97,7 +97,7 @@ fn ridged_noise(offset_x: i32, offset_y: i32) -> Box<[[f32; CHUNK_WIDTH]; CHUNK_
     map
 }
 
-const GRAD_SIZE: usize = CHUNK_WIDTH + 1;
+const GRAD_SIZE: usize = (CHUNK_WIDTH / PERLIN_CHUNK_WIDTH as usize) + 1;
 
 struct PerlinNoise {
     grads: Box<[[[f32; 2]; GRAD_SIZE]; GRAD_SIZE]>,
@@ -113,7 +113,12 @@ impl PerlinNoise {
 
         for x in 0..GRAD_SIZE {
             for y in 0..GRAD_SIZE {
-                grads[x][y] = random_grad(x as i32 + offset_x, y as i32 + offset_y, seed);
+                let grid_cells = CHUNK_WIDTH as i32 / PERLIN_CHUNK_WIDTH;
+                grads[x][y] = random_grad(
+                    x as i32 + offset_x * grid_cells,
+                    y as i32 + offset_y * grid_cells,
+                    seed,
+                );
             }
         }
 
