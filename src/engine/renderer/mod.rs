@@ -164,7 +164,7 @@ impl Renderer {
     /*
      * inserts an ObjectData into the internal datastructures and returns its ids
      */
-    pub fn create_object_data(&mut self, meshes: Vec<MeshData>) -> u32 {
+    fn create_object_data(&mut self, meshes: Vec<MeshData>) -> u32 {
         let ids = meshes.iter().cloned().map(|m| self.add_mesh(m)).collect();
         let oid = self.next_object_id();
         let data = ObjectData {
@@ -179,7 +179,7 @@ impl Renderer {
     /*
      * Loads ObjectData into render buffers
      */
-    pub fn load_object_data(&mut self, data_id: u32) {
+    fn load_object_data(&mut self, data_id: u32) {
         let object_data = self.object_data.get(&data_id).unwrap();
         let meshes = object_data.clone().meshes;
 
@@ -202,7 +202,7 @@ impl Renderer {
         }
     }
 
-    pub fn upload_to_index_buffer(&mut self, mesh_data: &MeshData, i_len: u32) {
+    fn upload_to_index_buffer(&mut self, mesh_data: &MeshData, i_len: u32) {
         if self.last_index_index + i_len > self.index_buffer.len() as u32 {
             let old_buffer = self.index_buffer.clone();
             let new_capacity = (old_buffer.len() as u32 + i_len) * 2;
@@ -270,7 +270,9 @@ impl Renderer {
             mapping[start..start + mesh_data.vertices.len()].copy_from_slice(&mesh_data.vertices);
         }
     }
-
+    /*
+     * Instantiates an Object where ObjectData is allready uploaded
+     */
     pub fn add_object_instance(&mut self, object_data_id: u32, instance: GPUInstance) {
         self.add_instance(instance);
         let mesh_ids: Vec<u32> = self
@@ -285,7 +287,7 @@ impl Renderer {
     }
     /*
      * creates a new object instance from an object that was never uploaded
-     * returns the new id of OgjectData
+     * returns the new id of ObjectData
      * TODO: add deduplication here
      */
     pub fn instantiate_object(&mut self, meshes: Vec<MeshData>, instance: GPUInstance) -> u32 {
@@ -313,7 +315,7 @@ impl Renderer {
         }
     }
 
-    pub fn add_indirect_draw(&mut self, mesh_id: u32) {
+    fn add_indirect_draw(&mut self, mesh_id: u32) {
         let info = self.mesh_buffer_mapping.get(&mesh_id).unwrap();
 
         self.indirect_commands.push(DrawIndexedIndirectCommand {
@@ -346,7 +348,7 @@ impl Renderer {
         }
     }
 
-    pub fn add_instance(&mut self, instanz: GPUInstance) {
+    fn add_instance(&mut self, instanz: GPUInstance) {
         self.instances.push(instanz);
         let count = self.instances.len();
 
