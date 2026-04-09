@@ -22,41 +22,41 @@ impl Voxels {
 
         self.chunks.insert(pos, chunk);
 
-        return self.get_chunk(pos);
+        self.get_chunk(pos)
     }
 
     pub fn get_chunk(&self, pos: [i32; 3]) -> &Chunk {
         assert!(self.chunks.contains_key(&pos));
-        return &self.chunks[&pos];
+        &self.chunks[&pos]
     }
 
     pub fn get_mut_chunk(&mut self, pos: [i32; 3]) -> &mut Chunk {
         assert!(self.chunks.contains_key(&pos));
-        return self.chunks.get_mut(&pos).unwrap();
+        self.chunks.get_mut(&pos).unwrap()
     }
 
     pub fn del_chunk(&mut self, pos: [i32; 3]) -> Option<Chunk> {
         assert!(self.chunks.contains_key(&pos));
-        return self.chunks.remove(&pos);
+        self.chunks.remove(&pos)
     }
 
     pub fn new_chunk(&mut self, pos: [i32; 3]) -> &mut Chunk {
         let chunk = Chunk::new(pos);
         self.insert_chunk(chunk);
-        return self.get_mut_chunk(pos);
+        self.get_mut_chunk(pos)
     }
 
     pub fn get_chunk_mesh(&self, pos: [i32; 3]) -> Mesh {
         let chunk = &self.chunks[&pos];
 
-        return chunk.get_mesh(self);
+        chunk.get_mesh(self)
     }
 }
 
 impl Chunk {
     pub fn new(pos: [i32; 3]) -> Self {
         Self {
-            pos: pos,
+            pos,
             amount: [[[0.0; CHUNK_WIDTH]; CHUNK_WIDTH]; CHUNK_WIDTH],
             materials: [[[Material::default(); CHUNK_WIDTH]; CHUNK_WIDTH]; CHUNK_WIDTH],
         }
@@ -84,7 +84,7 @@ impl Chunk {
         let new_y = y.min(CHUNK_WIDTH - 1);
         let new_z = z.min(CHUNK_WIDTH - 1);
 
-        return self.amount[new_x][new_y][new_z];
+        self.amount[new_x][new_y][new_z]
     }
 
     pub fn set_voxel(&mut self, x: usize, y: usize, z: usize, val: f32) {
@@ -102,7 +102,7 @@ impl Chunk {
             }
         }
 
-        return idx;
+        idx
     }
 
     fn add_point(
@@ -127,7 +127,7 @@ impl Chunk {
         mesh.hashed_points.insert(hash, idx);
         mesh.vertices.push(vertex);
 
-        return idx;
+        idx
     }
 
     fn add_face(
@@ -160,7 +160,7 @@ impl Chunk {
                     }
                     for face_idx in 0..case.count {
                         let edges = [
-                            case.edges[(face_idx * 3 + 0) as usize],
+                            case.edges[(face_idx * 3) as usize],
                             case.edges[(face_idx * 3 + 1) as usize],
                             case.edges[(face_idx * 3 + 2) as usize],
                         ];
@@ -191,7 +191,7 @@ impl Chunk {
                 }
             }
         }
-        return mesh;
+        mesh
     }
 }
 
@@ -201,7 +201,7 @@ pub fn edge_idx_to_point_hash(idx: i8, pos: [i32; 3], offset: [usize; 3]) -> [is
     hash[1] += (pos[1] as isize) * (CHUNK_WIDTH as isize) + (offset[1] as isize);
     hash[2] += (pos[2] as isize) * (CHUNK_WIDTH as isize) + (offset[2] as isize);
 
-    return hash;
+    hash
 }
 
 pub fn edge_idx_to_point_coord(
@@ -212,12 +212,12 @@ pub fn edge_idx_to_point_coord(
 ) -> [f32; 3] {
     let points = edge_vertex_indices[idx as usize];
     let p1 = [
-        (points[0] >> 0) & 1,
+        points[0] & 1,
         (points[0] >> 1) & 1,
         (points[0] >> 2) & 1,
     ];
     let p2 = [
-        (points[1] >> 0) & 1,
+        points[1] & 1,
         (points[1] >> 1) & 1,
         (points[1] >> 2) & 1,
     ];
@@ -237,11 +237,11 @@ pub fn edge_idx_to_point_coord(
 
     let lerp = -val2 / (val1 - val2);
 
-    return [
+    [
         (p1[0] as f32) * lerp + (p2[0] as f32) * (1.0 - lerp),
         (p1[1] as f32) * lerp + (p2[1] as f32) * (1.0 - lerp),
         (p1[2] as f32) * lerp + (p2[2] as f32) * (1.0 - lerp),
-    ];
+    ]
 }
 
 #[derive(Debug)]
@@ -251,7 +251,7 @@ pub struct Vertex {
 
 impl Vertex {
     pub fn from_pos(pos: [f32; 3]) -> Self {
-        Self { pos: pos }
+        Self { pos }
     }
 }
 

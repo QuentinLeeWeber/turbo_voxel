@@ -1,53 +1,9 @@
-use cgmath::{Matrix3, Matrix4};
-use std::sync::Arc;
-use vulkano::buffer::Subbuffer;
+use cgmath::Matrix4;
 
-use vulkano::command_buffer::{AutoCommandBufferBuilder, PrimaryAutoCommandBuffer};
-use vulkano::descriptor_set::allocator::StandardDescriptorSetAllocator;
-use vulkano::descriptor_set::layout::DescriptorSetLayout;
-use vulkano::device::Device;
-use vulkano::image::Image;
 use vulkano::{
-    buffer::{Buffer, BufferContents},
-    command_buffer::allocator::StandardCommandBufferAllocator,
-    descriptor_set::DescriptorSet,
-    device::Queue,
-    image::{sampler::Sampler, view::ImageView},
-    memory::allocator::StandardMemoryAllocator,
+    buffer::BufferContents,
     pipeline::graphics::vertex_input::Vertex,
 };
-
-/*
- * Meshes and Materials of a Object type
- */
-pub trait RenderResource {}
-
-pub struct LoadedTexture {
-    pub image: Arc<Image>,
-    pub view: Arc<ImageView>,
-    pub sampler: Arc<Sampler>,
-    pub descriptor_set: Arc<DescriptorSet>,
-}
-/*
- * Instance of a Object to be rendererd
- */
-pub trait Texture {
-    fn load_textures(
-        &self,
-        allocator: std::sync::Arc<vulkano::memory::allocator::StandardMemoryAllocator>,
-        command_buffer_allocator: Arc<
-            vulkano::command_buffer::allocator::StandardCommandBufferAllocator,
-        >,
-        queue: std::sync::Arc<vulkano::device::Queue>,
-        layout: Arc<DescriptorSetLayout>,
-        device: Arc<Device>,
-        descriptor_set_allocator: Arc<StandardDescriptorSetAllocator>,
-        builder: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>,
-    ) -> Vec<LoadedTexture>;
-}
-pub trait Mesh {
-    fn load_mesh();
-}
 
 /*
  * a low level object that can be loaded from a file
@@ -57,32 +13,7 @@ pub trait Mesh {
 #[derive(Debug, Clone)]
 pub struct ObjectData {
     pub id: u32,
-    pub materials: Vec<MaterialData>,
     pub meshes: Vec<MeshData>,
-}
-#[derive(Debug, Clone)]
-pub struct ImageData {
-    pub width: u32,
-    pub height: u32,
-    pub data: Vec<u8>,
-}
-impl ImageData {
-    pub fn new(width: u32, height: u32, data: Vec<u8>) -> ImageData {
-        ImageData {
-            width,
-            height,
-            data,
-        }
-    }
-}
-
-/*
- * A low level loaded Material
- */
-#[derive(Debug, Clone)]
-pub struct MaterialData {
-    pub name: String,
-    pub diffuse_texture: ImageData,
 }
 
 /*
@@ -102,12 +33,12 @@ impl MeshData {
         indices: Vec<u32>,
         material_id: u32,
     ) -> MeshData {
-        return MeshData {
+        MeshData {
             id,
             vertices,
             indices,
             material_id,
-        };
+        }
     }
 }
 /*
@@ -123,10 +54,10 @@ pub struct VertexData {
 }
 impl VertexData {
     pub fn new(pos: [f32; 3], normal: [f32; 3]) -> VertexData {
-        return VertexData {
+        VertexData {
             position: pos,
-            normal: normal,
-        };
+            normal,
+        }
     }
 }
 #[derive(Copy, Clone)]
@@ -145,8 +76,8 @@ pub struct InstanceData {
 impl InstanceData {
     pub fn new(position: cgmath::Vector3<f32>, rotation: cgmath::Quaternion<f32>) -> InstanceData {
         let model_mat = Matrix4::from_translation(position) * Matrix4::from(rotation);
-        return InstanceData {
+        InstanceData {
             model_mat: model_mat.into(),
-        };
+        }
     }
 }
