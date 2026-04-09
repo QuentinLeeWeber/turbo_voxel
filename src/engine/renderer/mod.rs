@@ -67,6 +67,7 @@ pub struct RenderData {
     surface: Arc<Surface>,
     swapchain: Arc<Swapchain>,
     swapchain_images: Vec<Arc<Image>>,
+    msaa_image: Arc<Image>,
     viewport: Viewport,
     framebuffers: Vec<Arc<Framebuffer>>,
 
@@ -80,6 +81,7 @@ pub struct RenderData {
 
     depth_image: Arc<Image>,
     depth_view: Arc<ImageView>,
+    msaa_view: Arc<ImageView>,
 }
 struct MeshBufferInfo {
     first_vertex: u32,
@@ -531,7 +533,10 @@ impl Renderer {
                         ..Default::default()
                     }),
                     rasterization_state: Some(RasterizationState::default()),
-                    multisample_state: Some(MultisampleState::default()),
+                    multisample_state: Some(MultisampleState {
+                        rasterization_samples: vulkano::image::SampleCount::Sample4,
+                        ..Default::default()
+                    }),
                     color_blend_state: Some(ColorBlendState::with_attachment_states(
                         subpass.num_color_attachments(),
                         ColorBlendAttachmentState::default(),
@@ -572,9 +577,19 @@ impl Renderer {
         let depth_image = self.create_depth_buffer(&new_swapchain);
         let depth_view = ImageView::new_default(depth_image).unwrap();
 
+        let msaa_image = self.create_msaa_image(&new_swapchain);
+        let msaa_view = ImageView::new_default(msaa_image.clone()).unwrap();
+
         let data = self.render_data.as_mut().unwrap();
         data.swapchain = new_swapchain;
-        data.framebuffers = generate_framebuffers(new_images, depth_view, data.render_pass.clone());
+        data.framebuffers = generate_framebuffers(
+            msaa_view.clone(),
+            new_images,
+            depth_view,
+            data.render_pass.clone(),
+        );
+        data.msaa_image = msaa_image;
+        data.msaa_view = msaa_view;
         data.viewport.extent = viewport_extent;
         data.recreate_swapchain = false;
     }
@@ -614,7 +629,7 @@ impl Renderer {
         builder
             .begin_render_pass(
                 RenderPassBeginInfo {
-                    clear_values: vec![Some([0.0, 0.0, 0.0, 1.0].into()), Some(1.0.into())],
+                    clear_values: vec![Some([0.0, 0.0, 0.0, 1.0].into()), None, Some(1.0.into())],
                     ..RenderPassBeginInfo::framebuffer(
                         data.framebuffers[image_index as usize].clone(),
                     )
@@ -769,7 +784,7 @@ impl Renderer {
                     min_image_count: caps.min_image_count,
                     image_format,
                     image_extent: dimensions.into(),
-                    image_usage: ImageUsage::COLOR_ATTACHMENT,
+                    image_usage: ImageUsage::COLOR_ATTACHMENT | ImageUsage::TRANSFER_DST,
                     composite_alpha,
                     ..Default::default()
                 },
@@ -780,23 +795,30 @@ impl Renderer {
         let render_pass = single_pass_renderpass!(
             self.device.clone(),
             attachments: {
-                color: {
+                msaa_color: {
+                    format: swapchain.image_format(),
+                    samples: 4,
+                    load_op: Clear,
+                    store_op: DontCare,
+                },
+                resolve_color: {
                     format: swapchain.image_format(),
                     samples: 1,
-                    load_op: Clear,
+                    load_op: DontCare,
                     store_op: Store,
                 },
                 depth: {
-                            format: Format::D32_SFLOAT,
-                            samples: 1,
-                            load_op: Clear,
-                            store_op: DontCare,
-                        }
+                    format: Format::D32_SFLOAT,
+                    samples: 4, // Muss mit msaa_color übereinstimmen
+                    load_op: Clear,
+                    store_op: DontCare,
+                }
             },
             pass: {
-                color: [color],
-                depth_stencil: {depth},
-            },
+                color: [msaa_color],
+                color_resolve: [resolve_color], // Muss vor depth_stencil stehen!
+                depth_stencil: {depth}
+            }
         )
         .unwrap();
 
@@ -822,13 +844,21 @@ impl Renderer {
         let depth_image = self.create_depth_buffer(&swapchain);
         let depth_view = ImageView::new_default(depth_image.clone()).unwrap();
 
+        let msaa_image = self.create_msaa_image(&swapchain);
+        let msaa_view = ImageView::new_default(msaa_image.clone()).unwrap();
+
         self.render_data = Some(RenderData {
             window,
             surface,
             swapchain,
             swapchain_images: images.clone(),
             render_pass: render_pass.clone(),
-            framebuffers: generate_framebuffers(images, depth_view.clone(), render_pass),
+            framebuffers: generate_framebuffers(
+                msaa_view.clone(),
+                images,
+                depth_view.clone(),
+                render_pass,
+            ),
             pipeline,
             recreate_swapchain: false,
             previous_frame_end,
@@ -836,7 +866,31 @@ impl Renderer {
             camera_uniform_descriptor_set,
             depth_image,
             depth_view,
+            msaa_image: msaa_image,
+            msaa_view: msaa_view,
         })
+    }
+
+    fn create_msaa_image(&mut self, swapchain: &Arc<Swapchain>) -> Arc<Image> {
+        let extend = swapchain.image_extent();
+        let mut e = [1; 3];
+        e[0] = extend[0];
+        e[1] = extend[1];
+        let msaa_image = Image::new(
+            self.memory_allocator.clone(),
+            ImageCreateInfo {
+                usage: ImageUsage::TRANSIENT_ATTACHMENT | ImageUsage::COLOR_ATTACHMENT,
+                format: swapchain.image_format(),
+                samples: vulkano::image::SampleCount::Sample4,
+                extent: e,
+                ..Default::default()
+            },
+            AllocationCreateInfo {
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        msaa_image
     }
 
     fn create_depth_buffer(&mut self, swapchain: &Arc<Swapchain>) -> Arc<Image> {
@@ -851,6 +905,7 @@ impl Renderer {
                 usage: ImageUsage::DEPTH_STENCIL_ATTACHMENT,
                 format: Format::D32_SFLOAT,
                 extent: e,
+                samples: vulkano::image::SampleCount::Sample4,
                 ..Default::default()
             },
             AllocationCreateInfo::default(),
@@ -1008,8 +1063,10 @@ fn create_instance(
 }
 
 fn generate_framebuffers(
+    msaa_image_view: Arc<ImageView>,
     swapchain_images: Vec<Arc<Image>>,
     depth_image_view: Arc<ImageView>,
+
     render_pass: Arc<RenderPass>,
 ) -> Vec<Arc<Framebuffer>> {
     swapchain_images
@@ -1019,7 +1076,11 @@ fn generate_framebuffers(
             Framebuffer::new(
                 render_pass.clone(),
                 FramebufferCreateInfo {
-                    attachments: vec![view.clone(), depth_image_view.clone()],
+                    attachments: vec![
+                        msaa_image_view.clone(),  // Index 0: Match 'msaa_color' (4 samples)
+                        view.clone(),             // Index 1: Match 'resolve_color' (1 sample)
+                        depth_image_view.clone(), // Index 2: Match 'depth' (4 samples)
+                    ],
                     ..Default::default()
                 },
             )
