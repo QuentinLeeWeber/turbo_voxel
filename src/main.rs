@@ -44,6 +44,7 @@ fn main() {
         16, 17, 18, 16, 18, 19, // Rechts
         20, 21, 22, 20, 22, 23, // Links
     ];
+
     let mesh = MeshData {
         vertices,
         indices,
@@ -63,18 +64,14 @@ fn main() {
     }
 
     let mesh = voxels.get_chunk_mesh([0, 0, 0]);
-    println!("{:#?}", mesh);
-
-    let mesh = mesh.into();
-    println!("{:#?}", mesh);
 
     struct ObjectData {}
     game_object::GameObjectBuilder::<ObjectData>::new(ObjectData {})
-        .with_mesh(mesh)
         .with_transform(Transform {
             pos: [0.0, 0.0, 0.0],
             rot: [90.0, 0.0, 0.0],
         })
+        .with_mesh(mesh.into())
         .build(&mut engine);
 
     event_loop.set_control_flow(winit::event_loop::ControlFlow::Poll);

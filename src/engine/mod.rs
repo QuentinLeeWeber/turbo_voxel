@@ -6,9 +6,9 @@ use cgmath::{Deg, Point3, Rad};
 use std::{collections::HashMap, sync::Arc};
 use winit::{
     application::ApplicationHandler,
-    event::{DeviceEvent, KeyEvent, WindowEvent},
+    event::{DeviceEvent, ElementState, KeyEvent, WindowEvent},
     event_loop::ActiveEventLoop,
-    keyboard::PhysicalKey,
+    keyboard::{KeyCode, PhysicalKey},
     window::{Window, WindowId},
 };
 
@@ -124,35 +124,50 @@ impl ApplicationHandler for Engine {
                 println!("The close button was pressed; stopping");
                 event_loop.exit();
             }
+
             WindowEvent::Resized(_) => {
                 self.renderer.update_screen_size();
             }
+
             WindowEvent::RedrawRequested => {
                 self.update();
                 self.camera_controller.update_camera(&mut self.camera);
                 self.renderer.update_camera_uniform(&mut self.camera);
                 self.renderer.render();
             }
-            WindowEvent::KeyboardInput {
-                event:
-                    KeyEvent {
-                        physical_key: PhysicalKey::Code(key),
-                        state,
-                        ..
-                    },
-                ..
-            } => {
-                self.camera_controller.process_keyboard(key, state);
+
+            WindowEvent::KeyboardInput { event, .. } => {
+                if let ElementState::Pressed = event.state {
+                    if let PhysicalKey::Code(KeyCode::Escape) = event.physical_key {
+                        self.renderer.set_cursor_grab(false);
+                    }
+                }
+
+                if let PhysicalKey::Code(key) = event.physical_key {
+                    self.camera_controller.process_keyboard(key, event.state);
+                }
+
                 let data = self.renderer.render_data.as_mut();
 
                 if let Some(d) = data {
                     d.window.request_redraw();
                 }
             }
+
             WindowEvent::MouseWheel { delta, .. } => {
                 self.camera_controller.process_scroll(&delta);
                 if let Some(d) = self.renderer.render_data.as_ref() {
                     d.window.request_redraw();
+                }
+            }
+
+            WindowEvent::MouseInput {
+                state: ElementState::Pressed,
+                button,
+                ..
+            } => {
+                if button == winit::event::MouseButton::Left {
+                    self.renderer.set_cursor_grab(true);
                 }
             }
 

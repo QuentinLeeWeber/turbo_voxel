@@ -128,6 +128,9 @@ pub struct Renderer {
 
     last_index_index: u32,
     last_vertex_index: u32,
+
+    window: Option<Arc<Window>>,
+    cursor_grabbed: bool,
 }
 /*
  *
@@ -483,6 +486,8 @@ impl Renderer {
             last_vertex_index: 0,
             last_index_index: 0,
             mesh_data: HashMap::new(),
+            window: None,
+            cursor_grabbed: false,
         }
     }
 
@@ -717,8 +722,28 @@ impl Renderer {
             .camera_uniform_descriptor_set = camera_descriptor_set;
     }
 
+    pub fn set_cursor_grab(&mut self, grabbed: bool) {
+        if let Some(window) = &self.window {
+            self.cursor_grabbed = grabbed;
+
+            let grab_mode = if self.cursor_grabbed {
+                winit::window::CursorGrabMode::Locked
+            } else {
+                winit::window::CursorGrabMode::None
+            };
+
+            if let Err(e) = window.set_cursor_grab(grab_mode) {
+                eprintln!("Error grabbing the cursor {:?}", e);
+            }
+
+            window.set_cursor_visible(!self.cursor_grabbed);
+        }
+    }
+
     pub fn resize(&mut self, window: Arc<Window>, camera: &mut Camera) {
         let surface = Surface::from_window(self.instance.clone(), window.clone()).unwrap();
+
+        self.window = Some(window.clone());
 
         let (swapchain, images) = {
             let caps = self
