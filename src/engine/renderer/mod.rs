@@ -118,7 +118,6 @@ pub struct Renderer {
 
     vertex_buffer: Subbuffer<[VertexData]>,
     max_vertex_count: u32,
-    last_vertex_index: u32,
 
     index_buffer: Subbuffer<[u32]>,
     indirect_buffer: Subbuffer<[DrawIndexedIndirectCommand]>,
@@ -139,7 +138,9 @@ pub struct Renderer {
 
     last_mesh_id: u32,
     last_object_id: u32,
+
     last_index_index: u32,
+    last_vertex_index: u32,
 }
 /*
  *
@@ -180,14 +181,95 @@ impl Renderer {
      */
     fn load_object_data(&mut self, data_id: u32) {
         let object_data = self.object_data.get(&data_id).unwrap();
-        let meshes: Vec<&MeshData> = object_data
-            .meshes
-            .iter()
-            .map(|m| self.mesh_data.get(m).unwrap())
-            .collect();
+        let meshes = object_data.clone().meshes;
+
         for mesh in meshes {
-            //bestimme MeshBufferInfo
-            //Daten in Vertex Buffer und Index Buffer laden
+            let mesh_data = self.mesh_data.get(&mesh).unwrap().clone();
+            let v_len = mesh_data.vertices.len() as u32;
+            let i_len = mesh_data.indices.len() as u32;
+            let info = MeshBufferInfo {
+                first_vertex: self.last_vertex_index,
+                index_count: mesh_data.indices.len() as u32,
+                index_start: self.last_index_index,
+            };
+            self.mesh_buffer_mapping.insert(mesh, info);
+            self.last_vertex_index += mesh_data.vertices.len() as u32;
+            self.last_index_index += mesh_data.indices.len() as u32;
+
+            self.upload_to_vertex_buffer(&mesh_data, v_len);
+            self.upload_to_index_buffer(&mesh_data, i_len);
+
+            self.last_vertex_index += v_len;
+            self.last_index_index += i_len;
+        }
+    }
+
+    fn upload_to_index_buffer(&mut self, mesh_data: &MeshData, i_len: u32) {
+        if self.last_index_index + i_len > self.index_buffer.len() as u32 {
+            let old_buffer = self.index_buffer.clone();
+            let new_capacity = (old_buffer.len() as u32 + i_len) * 2;
+
+            let new_buffer = Buffer::new_slice::<u32>(
+                self.memory_allocator.clone(),
+                BufferCreateInfo {
+                    usage: BufferUsage::INDEX_BUFFER,
+                    ..Default::default()
+                },
+                AllocationCreateInfo {
+                    memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
+                        | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
+                    ..Default::default()
+                },
+                new_capacity as u64,
+            )
+            .unwrap();
+
+            // Daten kopieren
+            if let (Ok(old_map), Ok(mut new_map)) = (old_buffer.read(), new_buffer.write()) {
+                let old_len = old_buffer.len() as usize;
+                new_map[..old_len].copy_from_slice(&old_map);
+                println!("Index Buffer migrated to capacity: {}", new_capacity);
+            }
+            self.index_buffer = new_buffer;
+        }
+
+        if let Ok(mut mapping) = self.index_buffer.write() {
+            let start = self.last_index_index as usize;
+            mapping[start..start + mesh_data.indices.len()].copy_from_slice(&mesh_data.indices);
+        }
+    }
+
+    fn upload_to_vertex_buffer(&mut self, mesh_data: &MeshData, v_len: u32) {
+        if self.last_vertex_index + v_len > self.vertex_buffer.len() as u32 {
+            let old_buffer = self.vertex_buffer.clone(); // Alten Buffer kurz festhalten
+            let new_capacity = (old_buffer.len() as u32 + v_len) * 2;
+
+            let new_buffer = Buffer::new_slice::<VertexData>(
+                self.memory_allocator.clone(),
+                BufferCreateInfo {
+                    usage: BufferUsage::VERTEX_BUFFER,
+                    ..Default::default()
+                },
+                AllocationCreateInfo {
+                    memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
+                        | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
+                    ..Default::default()
+                },
+                new_capacity as u64,
+            )
+            .unwrap();
+
+            // Daten vom alten in den neuen Buffer kopieren
+            if let (Ok(old_map), Ok(mut new_map)) = (old_buffer.read(), new_buffer.write()) {
+                let old_len = old_buffer.len() as usize;
+                new_map[..old_len].copy_from_slice(&old_map);
+                println!("Vertex Buffer migrated to capacity: {}", new_capacity);
+            }
+            self.vertex_buffer = new_buffer;
+        }
+        if let Ok(mut mapping) = self.vertex_buffer.write() {
+            let start = self.last_vertex_index as usize;
+            mapping[start..start + mesh_data.vertices.len()].copy_from_slice(&mesh_data.vertices);
         }
     }
 
@@ -228,7 +310,7 @@ impl Renderer {
         self.indirect_commands.push(DrawIndexedIndirectCommand {
             index_count: info.index_count,
             instance_count: 1,
-            first_index: info.first_vertex,
+            first_index: info.index_start,
             vertex_offset: 0,
             first_instance: (self.instances.len() - 1) as u32,
         });
@@ -282,7 +364,7 @@ impl Renderer {
         }
     }
 
-    pub fn new(event_loop: &impl HasDisplayHandle, objects: Vec<ObjectData>) -> Renderer {
+    pub fn new(event_loop: &impl HasDisplayHandle) -> Renderer {
         let library = VulkanLibrary::new().expect("no local Vulkan library");
         let required_extensions = Surface::required_extensions(&event_loop).unwrap();
         let instance = create_instance(library.clone(), required_extensions);
@@ -315,39 +397,8 @@ impl Renderer {
             Default::default(),
         ));
 
-        let mut objs = HashMap::new();
-        let mut vertices = Vec::new();
-        let mut indices = Vec::new();
-        let mut mesh_buffer_mapping = HashMap::new();
-        let mut vertex_pos = 0;
-        let mut index_pos = 0;
-        for obj in objects {
-            for mut mesh in obj.clone().meshes.drain(..) {
-                let info = MeshBufferInfo {
-                    first_vertex: vertex_pos,
-                    index_start: index_pos,
-                    index_count: mesh.indices.len() as u32,
-                };
-                vertex_pos += mesh.vertices.len() as u32;
-                index_pos += mesh.indices.len() as u32;
-                vertices.append(&mut mesh.vertices);
-                indices.append(&mut mesh.indices);
-                mesh_buffer_mapping.insert(mesh.id, info);
-            }
-            objs.insert(obj.id, obj.clone());
-        }
-
-        if vertices.is_empty() {
-            unreachable!("Empty vertex array given to renderer");
-        }
-
-        let instances = vec![];
-        let indirect_commands = vec![];
-
-        let max_vertex_count = vertices.len();
-
-        let vertex_buffer = create_vertex_buffer(&memory_allocator, vertices);
-        let index_buffer = create_index_buffer(&memory_allocator, indices);
+        let vertex_buffer = create_vertex_buffer(&memory_allocator);
+        let index_buffer = create_index_buffer(&memory_allocator);
         let indirect_buffer = create_indirect_buffer(&memory_allocator);
         let instance_buffer = create_instance_buffer(&memory_allocator);
 
@@ -395,22 +446,23 @@ impl Renderer {
             vertex_buffer,
             render_data: None,
             indirect_buffer,
-            instances,
-            indirect_commands,
+            instances: Vec::new(),
+            indirect_commands: Vec::new(),
             max_indirect_commands: 1024,
             max_instance_count: 1024,
-            object_data: objs,
-            mesh_buffer_mapping,
+            object_data: HashMap::new(),
+            mesh_buffer_mapping: HashMap::new(),
             index_buffer,
             camera,
             camera_buffer,
             descriptor_set_allocator,
             camera_controller: CameraController::new(1.0, 2.0),
-            max_vertex_count: max_vertex_count as u32,
-            last_mesh_id: 0,
-            last_object_id: 0,
-            last_vertex_index: vertex_pos,
-            last_index_index: index_pos,
+            max_vertex_count: 1024,
+            last_mesh_id: 1024,
+            last_object_id: 1024,
+            last_vertex_index: 0,
+            last_index_index: 0,
+            mesh_data: HashMap::new(),
         }
     }
 
@@ -824,9 +876,8 @@ fn create_index_buffer(
             vulkano::memory::allocator::FreeListAllocator,
         >,
     >,
-    indices: Vec<u32>,
 ) -> Subbuffer<[u32]> {
-    Buffer::from_iter(
+    Buffer::new_slice(
         memory_allocator.clone(),
         BufferCreateInfo {
             usage: BufferUsage::INDEX_BUFFER,
@@ -837,7 +888,7 @@ fn create_index_buffer(
                 | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
             ..Default::default()
         },
-        indices,
+        1024,
     )
     .expect("failed to create index buffer")
 }
@@ -848,9 +899,8 @@ fn create_vertex_buffer(
             vulkano::memory::allocator::FreeListAllocator,
         >,
     >,
-    vertices: Vec<VertexData>,
 ) -> Subbuffer<[VertexData]> {
-    Buffer::from_iter(
+    Buffer::new_slice(
         memory_allocator.clone(),
         BufferCreateInfo {
             usage: BufferUsage::VERTEX_BUFFER,
@@ -861,7 +911,7 @@ fn create_vertex_buffer(
                 | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
             ..Default::default()
         },
-        vertices,
+        1024,
     )
     .unwrap()
 }

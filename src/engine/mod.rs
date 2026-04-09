@@ -134,10 +134,10 @@ pub struct Engine {
 }
 
 impl Engine {
-    pub fn new(event_loop: &winit::event_loop::EventLoop<()>, objects: Vec<ObjectData>) -> Self {
+    pub fn new(event_loop: &winit::event_loop::EventLoop<()>) -> Self {
         Self {
             scene: Scene::new(),
-            renderer: Renderer::new(&event_loop, objects), // TODO: hier alle Objekte der Szene übergeben.
+            renderer: Renderer::new(&event_loop), // TODO: hier alle Objekte der Szene übergeben.
         }
     }
 
