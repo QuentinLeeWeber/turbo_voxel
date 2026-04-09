@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::sync::Arc;
 use winit::{
     application::ApplicationHandler,
@@ -7,7 +8,7 @@ use winit::{
     window::{Window, WindowId},
 };
 
-mod marching_cubes;
+pub mod marching_cubes;
 mod marching_cubes_data;
 pub mod renderer;
 mod scene;
@@ -42,38 +43,143 @@ struct Transform {
     rot: [f32; 3],
 }
 
+#[derive(Debug, Default)]
 enum HitBox {
+    #[default]
     None,
-    Sphere { radius: f32 },
-    Cube { size: f32 },
+    Sphere {
+        radius: f32,
+    },
+    Cube {
+        size: f32,
+    },
 }
 
 enum Event {
-    SpawObject(Box<dyn GameObject>),
+    SpawObject(Box<dyn GameObjectTrait>),
 }
 
-trait GameObject {
+pub struct RenderInfo {
+    pub vertices: Vec<VertexData>,
+    pub indices: Vec<u32>,
+    pub material_id: u32,
+}
+
+trait GameObjectTrait {
     fn get_id(&self) -> u32;
-    fn update(&mut self);
+    fn update(&mut self, engine: &mut Engine);
     fn get_transform(&self) -> Transform;
     fn get_hitbox(&self) -> HitBox;
-    fn notify(&mut self) -> Vec<Event>;
+    fn get_renderer_info(&self) -> RenderInfo;
+}
+
+pub struct GameObject<T> {
+    pub data: T,
+    id: u32,
+    hitbox: HitBox,
+    render_info: RenderInfo,
+    control_function: Box<dyn FnMut(&mut T, &mut Engine)>,
+    transform: Transform,
+}
+
+impl<T> GameObjectTrait for GameObject<T> {
+    fn get_id(&self) -> u32 {
+        self.id
+    }
+    fn update(&mut self, engine: &mut Engine) {
+        (self.control_function)(&mut self.data, engine);
+    }
+    fn get_transform(&self) -> Transform {
+        self.transform
+    }
+    fn get_hitbox(&self) -> HitBox {
+        self.hitbox
+    }
+    fn get_renderer_info(&self) -> RenderInfo {
+        self.render_info
+    }
+}
+
+pub struct GameObjectBuilder<T> {
+    data: T,
+    hitbox: HitBox,
+    render_info: RenderInfo,
+    transform: Transform,
+    control_function: Box<dyn FnMut(&mut T, &mut Engine)>,
+}
+
+impl<T> GameObjectBuilder<T> {
+    pub fn new(data: T) -> Self {
+        GameObjectBuilder {
+            data,
+            hitbox: Default::default(),
+            render_info: Default::default(),
+            control_function: Default::default(),
+            transform: Default::default(),
+        }
+    }
+
+    pub fn with_hitbox(mut self, hitbox: HitBox) -> Self {
+        self.hitbox = hitbox;
+        self
+    }
+
+    pub fn with_render_info(mut self, render_info: RenderInfo) -> Self {
+        self.render_info = render_info;
+        self
+    }
+
+    pub fn with_control<F>(mut self, control: F) -> Self
+    where
+        F: FnMut(&mut T, &mut Engine) + 'static,
+    {
+        self.control_functions.push(Box::new(control));
+        self
+    }
+
+    pub fn build(self, engine: &mut Engine) {
+        engine.add_game_object(Box::new(GameObject {
+            id: 0,
+            data: self.data,
+            hitbox: self.hitbox,
+            render_info: self.render_info,
+            control_function: self.control_function,
+            transform: self.transform,
+        }));
+    }
 }
 
 pub struct Engine {
-    scene: Scene,
+    scene: HashMap<u32, Box<dyn GameObjectTrait>>,
     pub renderer: Renderer,
+}
+
+pub struct RenderInfoHash {}
+
+pub struct Mesh {
+    pub vertices: Vec<VertexData>,
+    pub indices: Vec<u32>,
 }
 
 impl Engine {
     pub fn new(event_loop: &winit::event_loop::EventLoop<()>, objects: Vec<ObjectData>) -> Self {
         Self {
-            scene: Scene::new(),
+            scene: HashMap::new(),
             renderer: Renderer::new(&event_loop, objects), // TODO: hier alle Objekte der Szene übergeben.
         }
     }
 
-    fn update(&mut self) {}
+    fn update(&mut self) {
+        for object in self.scene.values_mut() {
+            object.update(self);
+        }
+    }
+
+    fn add_game_object(&mut self, object: Box<dyn GameObjectTrait>) {
+        self.scene.add_object(object);
+    }
+
+    fn add_mesh(&mut self, mesh: Mesh) -> RenderInfoHash {}
 }
 
 impl ApplicationHandler for Engine {

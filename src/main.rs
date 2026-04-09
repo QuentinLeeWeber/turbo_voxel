@@ -5,12 +5,12 @@ use cgmath::InnerSpace;
 use cgmath::Quaternion;
 use cgmath::Rotation3;
 use engine::Engine;
+use engine::marching_cubes::Voxels;
 use engine::renderer::prelude::*;
 use engine::world_gen;
 use winit::{event_loop::EventLoop, platform::x11::EventLoopBuilderExtX11};
 
 fn main() {
-    world_gen::generate_chunk(1, 1, 1);
     let event_loop = EventLoop::builder().with_any_thread(true).build().unwrap();
     let vertices = vec![
         VertexData::new([-0.5, -0.5, 0.5], [0.0, 0.0, 1.0]), // 0
@@ -48,12 +48,30 @@ fn main() {
         20, 21, 22, 20, 22, 23, // Links
     ];
 
+    impl Into<crate::engine::renderer::prelude::MeshData> for crate::engine::marching_cubes::Mesh {
+        let vertices: Vec<VertexData> = Vec::new();
+        let indices: Vec<u32> = Vec::new();
+        fn into(self) -> MeshData {
+            MeshData {
+                id: 1,
+                vertices,
+                indices,
+                material_id: 0,
+            }
+        }
+    }
+
+    let chunk = world_gen::generate_chunk(1, 1, 1);
+    let voxels = Voxels::new();
+    voxels.insert_chunk(chunk);
+    let mesh = chunk.get_mesh(&voxels);
+
     let objects = vec![ObjectData {
         id: 1,
         materials: Vec::new(),
         meshes: vec![MeshData {
             id: 1,
-            vertices: vertices,
+            vertices: chunk.get,
             indices: indices,
             material_id: 0,
         }],
