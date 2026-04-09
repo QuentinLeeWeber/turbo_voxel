@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use winit::{
     application::ApplicationHandler,
-    event::{DeviceEvent, KeyEvent, MouseButton, WindowEvent},
+    event::{DeviceEvent, KeyEvent, WindowEvent},
     event_loop::ActiveEventLoop,
     keyboard::PhysicalKey,
     window::{Window, WindowId},
@@ -10,6 +10,7 @@ use winit::{
 
 pub mod marching_cubes;
 mod marching_cubes_data;
+mod physics;
 pub mod renderer;
 mod scene;
 pub mod world_gen;
@@ -17,7 +18,7 @@ pub mod world_gen;
 use renderer::Renderer;
 use scene::Scene;
 
-use crate::engine::renderer::prelude::ObjectData;
+use crate::engine::renderer::prelude::{GPUInstance, MeshData, ObjectData};
 
 pub const CHUNK_WIDTH: usize = 16;
 
@@ -38,9 +39,17 @@ pub struct Chunk {
     pub amount: [[[f32; CHUNK_WIDTH]; CHUNK_WIDTH]; CHUNK_WIDTH],
 }
 
+use physics::CoordinateBorders;
+
 struct Transform {
     pos: [f32; 3],
     rot: [f32; 3],
+}
+
+pub struct BoundingBox {
+    x: CoordinateBorders,
+    y: CoordinateBorders,
+    z: CoordinateBorders,
 }
 
 #[derive(Debug, Default)]
@@ -48,21 +57,69 @@ enum HitBox {
     #[default]
     None,
     Sphere {
+        transform: Transform,
         radius: f32,
     },
     Cube {
+        transform: Transform,
         size: f32,
+    },
+    Triangle {
+        point1: [f32; 3],
+        point2: [f32; 3],
+        point3: [f32; 3],
     },
 }
 
 enum Event {
-    SpawObject(Box<dyn GameObjectTrait>),
+    SpawnObject(Box<dyn GameObjectTrait>),
 }
 
-pub struct RenderInfo {
-    pub vertices: Vec<VertexData>,
-    pub indices: Vec<u32>,
-    pub material_id: u32,
+impl HitBox {
+    pub fn get_bounding_box(&self) -> Option<BoundingBox> {
+        match self {
+            HitBox::None => None,
+            HitBox::Sphere { transform, radius } => Some(BoundingBox {
+                x: CoordinateBorders::new(transform.pos[0] - radius, transform.pos[0] + radius),
+                y: CoordinateBorders::new(transform.pos[1] - radius, transform.pos[1] + radius),
+                z: CoordinateBorders::new(transform.pos[2] - radius, transform.pos[2] + radius),
+            }),
+            HitBox::Cube { transform, size } => {
+                let max_dist = (3.0f32).sqrt() / 2. * size;
+                Some(BoundingBox {
+                    x: CoordinateBorders::new(
+                        transform.pos[0] - max_dist,
+                        transform.pos[0] + max_dist,
+                    ),
+                    y: CoordinateBorders::new(
+                        transform.pos[1] - max_dist,
+                        transform.pos[1] + max_dist,
+                    ),
+                    z: CoordinateBorders::new(
+                        transform.pos[2] - max_dist,
+                        transform.pos[2] + max_dist,
+                    ),
+                })
+            }
+            HitBox::Triangle {
+                point1,
+                point2,
+                point3,
+            } => {
+                let min_x = point1[0].min(point2[0].min(point3[0]));
+                let max_x = point1[0].max(point2[0].max(point3[0]));
+                let min_y = point1[1].min(point2[1].min(point3[1]));
+                let max_y = point1[1].max(point2[1].max(point3[1]));
+                let min_z = point1[2].min(point2[2].min(point3[2]));
+                let max_z = point1[2].max(point2[2].max(point3[2]));
+                Some(BoundingBox {
+                    x: CoordinateBorders::new(min_x, max_x),
+                    y: CoordinateBorders::new(min_y, max_y),
+                    z: CoordinateBorders::new(min_z, max_z),
+                })
+            }
+        }
+    }
 }
 
 trait GameObjectTrait {
@@ -70,16 +127,18 @@ trait GameObjectTrait {
     fn update(&mut self, engine: &mut Engine);
     fn get_transform(&self) -> Transform;
     fn get_hitbox(&self) -> HitBox;
-    fn get_renderer_info(&self) -> RenderInfo;
+    fn get_object_data(&self) -> Vec<MeshData>; //returns basic data like meshes needed for rendering
+    fn get_instance_data(&self) -> GPUInstance; //returns the instance transforms
 }
 
 pub struct GameObject<T> {
     pub data: T,
     id: u32,
     hitbox: HitBox,
-    render_info: RenderInfo,
     control_function: Box<dyn FnMut(&mut T, &mut Engine)>,
     transform: Transform,
+    gpu_instance: GPUInstance,
+    object_data: Vec<MeshData>,
 }
 
 impl<T> GameObjectTrait for GameObject<T> {
@@ -95,17 +154,21 @@ impl<T> GameObjectTrait for GameObject<T> {
     fn get_hitbox(&self) -> HitBox {
         self.hitbox
     }
-    fn get_renderer_info(&self) -> RenderInfo {
-        self.render_info
+    fn get_instance_data(&self) -> GPUInstance {
+        self.gpu_instance
+    }
+    fn get_object_data(&self) -> Vec<MeshData> {
+        self.object_data
     }
 }
 
 pub struct GameObjectBuilder<T> {
     data: T,
     hitbox: HitBox,
-    render_info: RenderInfo,
     transform: Transform,
     control_function: Box<dyn FnMut(&mut T, &mut Engine)>,
+    gpu_instance: GPUInstance,
+    object_data: Vec<MeshData>,
 }
 
 impl<T> GameObjectBuilder<T> {
@@ -113,19 +176,14 @@ impl<T> GameObjectBuilder<T> {
         GameObjectBuilder {
             data,
             hitbox: Default::default(),
-            render_info: Default::default(),
             control_function: Default::default(),
             transform: Default::default(),
+            object_data: Vec::new(),
         }
     }
 
     pub fn with_hitbox(mut self, hitbox: HitBox) -> Self {
         self.hitbox = hitbox;
-        self
-    }
-
-    pub fn with_render_info(mut self, render_info: RenderInfo) -> Self {
-        self.render_info = render_info;
         self
     }
 
@@ -137,12 +195,16 @@ impl<T> GameObjectBuilder<T> {
         self
     }
 
+    pub fn with_transform(mut self, transform: Transform) -> Self {
+        self.transform = transform;
+        self
+    }
+
     pub fn build(self, engine: &mut Engine) {
         engine.add_game_object(Box::new(GameObject {
             id: 0,
             data: self.data,
             hitbox: self.hitbox,
-            render_info: self.render_info,
             control_function: self.control_function,
             transform: self.transform,
         }));
@@ -152,13 +214,6 @@ impl<T> GameObjectBuilder<T> {
 pub struct Engine {
     scene: HashMap<u32, Box<dyn GameObjectTrait>>,
     pub renderer: Renderer,
-}
-
-pub struct RenderInfoHash {}
-
-pub struct Mesh {
-    pub vertices: Vec<VertexData>,
-    pub indices: Vec<u32>,
 }
 
 impl Engine {
@@ -178,8 +233,6 @@ impl Engine {
     fn add_game_object(&mut self, object: Box<dyn GameObjectTrait>) {
         self.scene.add_object(object);
     }
-
-    fn add_mesh(&mut self, mesh: Mesh) -> RenderInfoHash {}
 }
 
 impl ApplicationHandler for Engine {
@@ -193,8 +246,8 @@ impl ApplicationHandler for Engine {
     }
     fn device_event(
         &mut self,
-        event_loop: &ActiveEventLoop,
-        device_id: winit::event::DeviceId,
+        _event_loop: &ActiveEventLoop,
+        _device_id: winit::event::DeviceId,
         event: winit::event::DeviceEvent,
     ) {
         if let DeviceEvent::MouseMotion { delta } = event {

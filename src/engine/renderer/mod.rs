@@ -1,3 +1,4 @@
+use crate::engine::marching_cubes::Mesh;
 use cgmath::{Deg, Point3, Rad};
 use std::collections::HashMap;
 use std::ops::RangeInclusive;
@@ -5,26 +6,12 @@ use std::sync::Arc;
 use vulkano::buffer::{Buffer, BufferCreateInfo, BufferUsage, Subbuffer};
 use vulkano::command_buffer::allocator::StandardCommandBufferAllocator;
 use vulkano::command_buffer::{
-    AutoCommandBufferBuilder, DrawIndexedIndirectCommand, DrawIndirectCommand, RenderPassBeginInfo,
+    AutoCommandBufferBuilder, DrawIndexedIndirectCommand, RenderPassBeginInfo,
 };
-use vulkano::descriptor_set::allocator::{
-    StandardDescriptorSetAllocator, StandardDescriptorSetAllocatorCreateInfo,
-};
-use vulkano::descriptor_set::layout::{DescriptorSetLayoutBinding, DescriptorSetLayoutCreateInfo};
+use vulkano::descriptor_set::allocator::StandardDescriptorSetAllocator;
 use vulkano::descriptor_set::{DescriptorSet, WriteDescriptorSet};
 use vulkano::device::{Device, DeviceCreateInfo, Queue, QueueCreateInfo};
 use vulkano::format::Format;
-use vulkano::image::view::ImageView;
-use vulkano::image::{Image, ImageCreateInfo, ImageUsage};
-use vulkano::pipeline::Pipeline;
-use vulkano::pipeline::graphics::color_blend::{ColorBlendAttachmentState, ColorBlendState};
-use vulkano::pipeline::graphics::depth_stencil::{DepthState, DepthStencilState};
-use vulkano::pipeline::graphics::input_assembly::InputAssemblyState;
-use vulkano::pipeline::graphics::multisample::MultisampleState;
-use vulkano::pipeline::graphics::rasterization::RasterizationState;
-use vulkano::pipeline::graphics::subpass::PipelineSubpassType;
-use vulkano::pipeline::graphics::vertex_input::{Vertex, VertexDefinition};
-use vulkano::pipeline::graphics::viewport::{Viewport, ViewportState};
 use vulkano::swapchain::{
     Swapchain, SwapchainCreateInfo, SwapchainPresentInfo, acquire_next_image,
 };
@@ -35,6 +22,27 @@ use vulkano::{
     device::{DeviceExtensions, QueueFlags, physical::PhysicalDevice},
     instance::{Instance, InstanceCreateFlags, InstanceCreateInfo},
     swapchain::Surface,
+};
+use vulkano::{
+    image::view::ImageView,
+    pipeline::{
+        Pipeline,
+        graphics::{
+            color_blend::{ColorBlendAttachmentState, ColorBlendState},
+            depth_stencil::{DepthState, DepthStencilState},
+            input_assembly::InputAssemblyState,
+            multisample::MultisampleState,
+            rasterization::RasterizationState,
+            viewport::{Viewport, ViewportState},
+        },
+    },
+};
+use vulkano::{
+    image::{Image, ImageCreateInfo, ImageUsage},
+    pipeline::graphics::{
+        subpass::PipelineSubpassType,
+        vertex_input::{Vertex, VertexDefinition},
+    },
 };
 use vulkano::{
     memory::allocator::{AllocationCreateInfo, MemoryTypeFilter, StandardMemoryAllocator},
@@ -61,7 +69,6 @@ mod fs {
     );
 }
 mod camera;
-mod object_data;
 pub mod prelude;
 use prelude::*;
 
@@ -72,13 +79,17 @@ pub struct RenderData {
     surface: Arc<Surface>,
     swapchain: Arc<Swapchain>,
     swapchain_images: Vec<Arc<Image>>,
-    render_pass: Arc<RenderPass>,
+    viewport: Viewport,
     framebuffers: Vec<Arc<Framebuffer>>,
+
+    render_pass: Arc<RenderPass>,
+
     pipeline: Arc<GraphicsPipeline>,
     recreate_swapchain: bool,
     previous_frame_end: Option<Box<dyn GpuFuture>>,
-    viewport: Viewport,
+
     pub camera_uniform_descriptor_set: Arc<DescriptorSet>,
+
     depth_image: Arc<Image>,
     depth_view: Arc<ImageView>,
 }
@@ -90,49 +101,124 @@ struct MeshBufferInfo {
 
 pub struct Renderer {
     library: Arc<VulkanLibrary>,
-    objects: HashMap<u32, ObjectData>,
+    object_data: HashMap<u32, ObjectData>,
+    mesh_data: HashMap<u32, MeshData>,
     instance: Arc<Instance>,
-    instances: Vec<InstanceData>,
+
+    instances: Vec<GPUInstance>,
+    max_instance_count: usize,
+    instance_buffer: Subbuffer<[InstanceData]>,
+
     indirect_commands: Vec<DrawIndexedIndirectCommand>,
     max_indirect_commands: usize,
-    max_instance_count: usize,
+
     command_buffer_allocator: Arc<StandardCommandBufferAllocator>,
+    memory_allocator: Arc<StandardMemoryAllocator>,
+    descriptor_set_allocator: Arc<StandardDescriptorSetAllocator>,
+
     vertex_buffer: Subbuffer<[VertexData]>,
+    max_vertex_count: u32,
+    last_vertex_index: u32,
+
     index_buffer: Subbuffer<[u32]>,
-    instance_buffer: Subbuffer<[InstanceData]>,
     indirect_buffer: Subbuffer<[DrawIndexedIndirectCommand]>,
+
     physical_device: Arc<PhysicalDevice>,
     device: Arc<Device>,
+
     queue_family_index: u32,
     queue: Arc<Queue>,
-    memory_allocator: Arc<StandardMemoryAllocator>,
-    pub render_data: Option<RenderData>,
+
     mesh_buffer_mapping: HashMap<u32, MeshBufferInfo>,
+
     camera: Camera,
     pub camera_controller: CameraController,
     camera_buffer: Subbuffer<vs::Camera>,
-    descriptor_set_allocator: Arc<StandardDescriptorSetAllocator>,
+
+    pub render_data: Option<RenderData>,
+
+    last_mesh_id: u32,
+    last_object_id: u32,
+    last_index_index: u32,
 }
 /*
  *
  */
 impl Renderer {
+    fn next_mesh_id(&mut self) -> u32 {
+        self.last_mesh_id += 1;
+        self.last_mesh_id
+    }
+    fn next_object_id(&mut self) -> u32 {
+        self.last_object_id += 1;
+        self.last_object_id
+    }
+
+    fn add_mesh(&mut self, mesh: MeshData) -> u32 {
+        let id = self.next_mesh_id();
+        self.mesh_data.insert(id, mesh);
+        id
+    }
+
     /*
-     * add_instance object_id, Vec<InstanceDat>
-     *
+     * inserts an ObjectData into the internal datastructures and returns its ids
      */
-    pub fn add_object_instance(&mut self, object_id: u32, instanz: InstanceData) {
-        self.add_instance(instanz);
-        let mesh_ids: Vec<u32> = self
-            .objects
-            .get(&object_id)
-            .expect("Object ID not found")
+    fn create_object_data(&mut self, meshes: Vec<MeshData>) -> u32 {
+        let ids = meshes.iter().cloned().map(|m| self.add_mesh(m)).collect();
+        let oid = self.next_object_id();
+        let data = ObjectData {
+            id: oid,
+            meshes: ids,
+        };
+        self.object_data.insert(oid, data);
+        return oid;
+        //TODO: check if fitting object is present
+    }
+
+    /*
+     * Loads ObjectData into render buffers
+     */
+    fn load_object_data(&mut self, data_id: u32) {
+        let object_data = self.object_data.get(&data_id).unwrap();
+        let meshes: Vec<&MeshData> = object_data
             .meshes
             .iter()
-            .map(|mesh| mesh.id)
+            .map(|m| self.mesh_data.get(m).unwrap())
             .collect();
+        for mesh in meshes {
+            //bestimme MeshBufferInfo
+            //Daten in Vertex Buffer und Index Buffer laden
+        }
+    }
+
+    pub fn add_object_instance(&mut self, object_data_id: u32, instance: GPUInstance) {
+        self.add_instance(instance);
+        let mesh_ids: Vec<u32> = self
+            .object_data
+            .get(&object_data_id)
+            .expect("Object ID not found")
+            .meshes
+            .clone();
         for mesh_id in mesh_ids {
             self.add_indirect_draw(mesh_id);
+        }
+    }
+    /*
+     * update a allready present instance and change their transforms
+     * use this to set new positions from simulation
+     * TODO: Batch operation
+     */
+    pub fn update_object_instance(&mut self, instanz_id: u32, instanz: InstanceData) {
+        let ind = self
+            .instances
+            .iter()
+            .position(|i| i.instance_id == instanz_id)
+            .unwrap();
+        self.instances[ind].instance = instanz;
+
+        if let Ok(mut mapping) = self.instance_buffer.write() {
+            mapping[ind] = instanz;
+            println!("A Object update happened");
         }
     }
 
@@ -164,14 +250,12 @@ impl Renderer {
                 self.indirect_commands.clone(),
             )
             .unwrap();
-        } else {
-            if let Ok(mut mapping) = self.indirect_buffer.write() {
-                mapping[..count].copy_from_slice(&self.indirect_commands);
-            }
+        } else if let Ok(mut mapping) = self.indirect_buffer.write() {
+            mapping[..count].copy_from_slice(&self.indirect_commands);
         }
     }
 
-    pub fn add_instance(&mut self, instanz: InstanceData) {
+    pub fn add_instance(&mut self, instanz: GPUInstance) {
         self.instances.push(instanz);
         let count = self.instances.len();
 
@@ -188,12 +272,12 @@ impl Renderer {
                         | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
                     ..Default::default()
                 },
-                self.instances.clone(),
+                self.instances.iter().map(|i| i.instance),
             )
             .unwrap();
-        } else {
-            if let Ok(mut mapping) = self.instance_buffer.write() {
-                mapping[..count].copy_from_slice(&self.instances);
+        } else if let Ok(mut mapping) = self.instance_buffer.write() {
+            for (i, inst) in self.instances.iter().take(count).enumerate() {
+                mapping[i] = inst.instance;
             }
         }
     }
@@ -252,12 +336,15 @@ impl Renderer {
             }
             objs.insert(obj.id, obj.clone());
         }
-        if vertices.len() == 0 {
+
+        if vertices.is_empty() {
             unreachable!("Empty vertex array given to renderer");
         }
 
         let instances = vec![];
         let indirect_commands = vec![];
+
+        let max_vertex_count = vertices.len();
 
         let vertex_buffer = create_vertex_buffer(&memory_allocator, vertices);
         let index_buffer = create_index_buffer(&memory_allocator, indices);
@@ -271,7 +358,7 @@ impl Renderer {
             Projection::new(10, 10, Rad::from(Deg(90.0)), 0.1, 10.0),
         );
         let camera_uniform = vs::Camera {
-            view_position: [camera.position.x, camera.position.y, camera.position.z, 0.0].into(),
+            view_position: [camera.position.x, camera.position.y, camera.position.z, 0.0],
             view_proj: camera.calc_matrix().into(),
         };
 
@@ -295,35 +382,40 @@ impl Renderer {
             Default::default(),
         ));
 
-        return Renderer {
+        Renderer {
             library,
             instance,
-            physical_device: physical_device,
-            queue_family_index: queue_family_index,
-            queue: queue,
-            device: device,
-            command_buffer_allocator: command_buffer_allocator,
-            memory_allocator: memory_allocator,
-            instance_buffer: instance_buffer,
-            vertex_buffer: vertex_buffer,
+            physical_device,
+            queue_family_index,
+            queue,
+            device,
+            command_buffer_allocator,
+            memory_allocator,
+            instance_buffer,
+            vertex_buffer,
             render_data: None,
             indirect_buffer,
-            instances: instances,
-            indirect_commands: indirect_commands,
+            instances,
+            indirect_commands,
             max_indirect_commands: 1024,
             max_instance_count: 1024,
-            objects: objs,
-            mesh_buffer_mapping: mesh_buffer_mapping,
-            index_buffer: index_buffer,
-            camera: camera,
-            camera_buffer: camera_buffer,
-            descriptor_set_allocator: descriptor_set_allocator,
+            object_data: objs,
+            mesh_buffer_mapping,
+            index_buffer,
+            camera,
+            camera_buffer,
+            descriptor_set_allocator,
             camera_controller: CameraController::new(1.0, 2.0),
-        };
+            max_vertex_count: max_vertex_count as u32,
+            last_mesh_id: 0,
+            last_object_id: 0,
+            last_vertex_index: vertex_pos,
+            last_index_index: index_pos,
+        }
     }
 
     fn create_pipeline(&mut self, render_pass: &Arc<RenderPass>) -> Arc<GraphicsPipeline> {
-        let pipeline = {
+        {
             let vs = vs::load(self.device.clone())
                 .unwrap()
                 .entry_point("main")
@@ -382,8 +474,7 @@ impl Renderer {
                 },
             )
             .expect("failed to create graphics pipeline")
-        };
-        pipeline
+        }
     }
 
     pub fn update_screen_size(&mut self) {
@@ -416,7 +507,7 @@ impl Renderer {
         self.update_camera();
 
         let data = self.render_data.as_mut().unwrap();
-        let layout = data.pipeline.layout().set_layouts().get(0).unwrap();
+        let _layout = data.pipeline.layout().set_layouts().first().unwrap();
         let window_size = data.window.as_ref().inner_size();
 
         if window_size.width == 0 || window_size.height == 0 {
@@ -481,7 +572,6 @@ impl Renderer {
         if command_count > 0 {
             let buffer_slice = self.indirect_buffer.clone().slice(0..command_count);
             unsafe { builder.draw_indexed_indirect(buffer_slice) }.unwrap();
-        } else {
         }
 
         builder.end_render_pass(Default::default()).unwrap();
@@ -524,8 +614,7 @@ impl Renderer {
                 self.camera.position.y,
                 self.camera.position.z,
                 0.0,
-            ]
-            .into(),
+            ],
             view_proj: proj,
         };
 
@@ -550,7 +639,7 @@ impl Renderer {
         }
         self.camera_buffer = camera_buffer.clone();
 
-        let layout = data.pipeline.layout().set_layouts().get(0).unwrap();
+        let layout = data.pipeline.layout().set_layouts().first().unwrap();
         let camera_descriptor_set = DescriptorSet::new(
             self.descriptor_set_allocator.clone(),
             layout.clone(),
@@ -567,7 +656,7 @@ impl Renderer {
     pub fn resize(&mut self, window: Arc<Window>) {
         let surface = Surface::from_window(self.instance.clone(), window.clone()).unwrap();
 
-        let (mut swapchain, images) = {
+        let (swapchain, images) = {
             let caps = self
                 .physical_device
                 .surface_capabilities(&surface, Default::default())
@@ -632,7 +721,7 @@ impl Renderer {
         };
         let previous_frame_end = Some(sync::now(self.device.clone()).boxed());
 
-        let layout = pipeline.layout().set_layouts().get(0).unwrap();
+        let layout = pipeline.layout().set_layouts().first().unwrap();
 
         let camera_uniform_descriptor_set = DescriptorSet::new(
             self.descriptor_set_allocator.clone(),
@@ -657,8 +746,8 @@ impl Renderer {
             previous_frame_end,
             viewport,
             camera_uniform_descriptor_set,
-            depth_image: depth_image,
-            depth_view: depth_view,
+            depth_image,
+            depth_view,
         })
     }
 
@@ -668,7 +757,7 @@ impl Renderer {
         e[0] = extend[0];
         e[1] = extend[1];
 
-        let depth_image = Image::new(
+        Image::new(
             self.memory_allocator.clone(),
             ImageCreateInfo {
                 usage: ImageUsage::DEPTH_STENCIL_ATTACHMENT,
@@ -678,8 +767,7 @@ impl Renderer {
             },
             AllocationCreateInfo::default(),
         )
-        .unwrap();
-        depth_image
+        .unwrap()
     }
 }
 
@@ -690,7 +778,7 @@ fn create_instance_buffer(
         >,
     >,
 ) -> Subbuffer<[InstanceData]> {
-    let instance_buffer = Buffer::new_slice(
+    Buffer::new_slice(
         memory_allocator.clone(),
         BufferCreateInfo {
             usage: BufferUsage::VERTEX_BUFFER,
@@ -704,8 +792,7 @@ fn create_instance_buffer(
         1024,
         //TODO: alle objekte hochladen
     )
-    .unwrap();
-    instance_buffer
+    .unwrap()
 }
 
 fn create_indirect_buffer(
@@ -715,7 +802,7 @@ fn create_indirect_buffer(
         >,
     >,
 ) -> Subbuffer<[DrawIndexedIndirectCommand]> {
-    let indirect_buffer = Buffer::new_slice(
+    Buffer::new_slice(
         memory_allocator.clone(),
         BufferCreateInfo {
             usage: BufferUsage::INDIRECT_BUFFER,
@@ -728,8 +815,7 @@ fn create_indirect_buffer(
         },
         1024,
     )
-    .unwrap();
-    indirect_buffer
+    .unwrap()
 }
 
 fn create_index_buffer(
@@ -740,7 +826,7 @@ fn create_index_buffer(
     >,
     indices: Vec<u32>,
 ) -> Subbuffer<[u32]> {
-    let index_buffer = Buffer::from_iter(
+    Buffer::from_iter(
         memory_allocator.clone(),
         BufferCreateInfo {
             usage: BufferUsage::INDEX_BUFFER,
@@ -753,8 +839,7 @@ fn create_index_buffer(
         },
         indices,
     )
-    .expect("failed to create index buffer");
-    index_buffer
+    .expect("failed to create index buffer")
 }
 
 fn create_vertex_buffer(
@@ -765,7 +850,7 @@ fn create_vertex_buffer(
     >,
     vertices: Vec<VertexData>,
 ) -> Subbuffer<[VertexData]> {
-    let vertex_buffer = Buffer::from_iter(
+    Buffer::from_iter(
         memory_allocator.clone(),
         BufferCreateInfo {
             usage: BufferUsage::VERTEX_BUFFER,
@@ -778,8 +863,7 @@ fn create_vertex_buffer(
         },
         vertices,
     )
-    .unwrap();
-    vertex_buffer
+    .unwrap()
 }
 
 fn create_device(
@@ -787,7 +871,7 @@ fn create_device(
     queue_family_index: u32,
     device_extensions: DeviceExtensions,
 ) -> (Arc<Device>, impl ExactSizeIterator<Item = Arc<Queue>>) {
-    let (device, mut queues) = Device::new(
+    let (device, queues) = Device::new(
         physical_device.clone(),
         DeviceCreateInfo {
             queue_create_infos: vec![QueueCreateInfo {
@@ -803,7 +887,7 @@ fn create_device(
 }
 
 fn create_queue_family_index(physical_device: Arc<PhysicalDevice>) -> u32 {
-    let queue_family_index = physical_device
+    physical_device
         .queue_family_properties()
         .iter()
         .position(|queue_family_properties| {
@@ -811,24 +895,22 @@ fn create_queue_family_index(physical_device: Arc<PhysicalDevice>) -> u32 {
                 .queue_flags
                 .contains(QueueFlags::GRAPHICS)
         })
-        .expect("couldn't find a graphical queue family") as u32;
-    queue_family_index
+        .expect("couldn't find a graphical queue family") as u32
 }
 
 fn create_physical_device(instance: Arc<Instance>) -> Arc<PhysicalDevice> {
-    let physical_device = instance
+    instance
         .enumerate_physical_devices()
         .expect("could not enumerate enumerate devices")
         .next()
-        .expect("no devices available");
-    physical_device
+        .expect("no devices available")
 }
 
 fn create_instance(
     library: Arc<VulkanLibrary>,
     required_extensions: vulkano::instance::InstanceExtensions,
 ) -> Arc<Instance> {
-    let instance = Instance::new(
+    Instance::new(
         library.clone(),
         InstanceCreateInfo {
             flags: InstanceCreateFlags::ENUMERATE_PORTABILITY,
@@ -836,8 +918,7 @@ fn create_instance(
             ..Default::default()
         },
     )
-    .expect("failed to create instance");
-    instance
+    .expect("failed to create instance")
 }
 
 fn generate_framebuffers(
