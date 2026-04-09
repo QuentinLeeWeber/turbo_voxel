@@ -476,7 +476,13 @@ fn check_line_triangle_collision(line: &HitBox, triangle: &HitBox) -> bool {
         (-res[0], -res[1], res[2])
     };
 
-    return beta >= 0. && beta <= 1. && gamma >= 0. && gamma <= 1. && alpha >= 0. && alpha <= 1.;
+    return beta >= 0.
+        && beta <= 1.
+        && gamma >= 0.
+        && gamma <= 1.
+        && alpha >= 0.
+        && alpha <= 1.
+        && beta + gamma <= 1.;
 }
 
 fn extract_triangle_data(triangle: &HitBox) -> Option<(Vector3<f32>, Vector3<f32>, Vector3<f32>)> {
