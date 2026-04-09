@@ -1,15 +1,7 @@
 use cgmath::Matrix4;
-use std::sync::Arc;
 
-use vulkano::command_buffer::{AutoCommandBufferBuilder, PrimaryAutoCommandBuffer};
-use vulkano::descriptor_set::allocator::StandardDescriptorSetAllocator;
-use vulkano::descriptor_set::layout::DescriptorSetLayout;
-use vulkano::device::Device;
-use vulkano::image::Image;
 use vulkano::{
     buffer::BufferContents,
-    descriptor_set::DescriptorSet,
-    image::{sampler::Sampler, view::ImageView},
     pipeline::graphics::vertex_input::Vertex,
 };
 
