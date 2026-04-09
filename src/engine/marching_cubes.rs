@@ -199,38 +199,108 @@ impl Chunk {
             }
         }
 
-        for face in &mesh.faces {
-            let [i0, i1, i2] = face.points;
-            let p0 = mesh.vertices[i0].pos;
-            let p1 = mesh.vertices[i1].pos;
-            let p2 = mesh.vertices[i2].pos;
+        smooth_mesh_laplacian(&mut mesh, 2);
 
-            let e1 = [p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]];
-            let e2 = [p2[0] - p0[0], p2[1] - p0[1], p2[2] - p0[2]];
-
-            let n = [
-                e1[1] * e2[2] - e1[2] * e2[1],
-                e1[2] * e2[0] - e1[0] * e2[2],
-                e1[0] * e2[1] - e1[1] * e2[0],
-            ];
-
-            for &i in &[i0, i1, i2] {
-                mesh.vertices[i].normal[0] += n[0];
-                mesh.vertices[i].normal[1] += n[1];
-                mesh.vertices[i].normal[2] += n[2];
-            }
-        }
-
-        for v in &mut mesh.vertices {
-            let len = (v.normal[0].powi(2) + v.normal[1].powi(2) + v.normal[2].powi(2)).sqrt();
-            if len > 1e-6 {
-                v.normal[0] /= len;
-                v.normal[1] /= len;
-                v.normal[2] /= len;
-            }
-        }
+        compute_normals(&mut mesh);
 
         mesh
+    }
+}
+
+pub fn compute_normals(mesh: &mut Mesh) {
+    for v in &mut mesh.vertices {
+        v.normal = [0.0; 3];
+    }
+
+    for face in &mesh.faces {
+        let [i0, i1, i2] = face.points;
+
+        //vertex points
+        let p0 = mesh.vertices[i0].pos;
+        let p1 = mesh.vertices[i1].pos;
+        let p2 = mesh.vertices[i2].pos;
+
+        //diffs
+        let e1 = [p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]];
+        let e2 = [p2[0] - p0[0], p2[1] - p0[1], p2[2] - p0[2]];
+        let e3 = [p2[0] - p1[0], p2[1] - p1[1], p2[2] - p1[2]];
+
+        //cross product
+        let n = [
+            e1[1] * e2[2] - e1[2] * e2[1],
+            e1[2] * e2[0] - e1[0] * e2[2],
+            e1[0] * e2[1] - e1[1] * e2[0],
+        ];
+
+        let e_neg1 = [-e1[0], -e1[1], -e1[2]];
+        let e_neg3 = [-e3[0], -e3[1], -e3[2]];
+
+        let w = [
+            angle_weight(e1, e2),
+            angle_weight(e_neg1, e3),
+            angle_weight(e_neg3, e_neg1),
+        ];
+
+        for (&idx, &w_i) in [i0, i1, i2].iter().zip(w.iter()) {
+            mesh.vertices[idx].normal[0] += n[0] * w_i;
+            mesh.vertices[idx].normal[1] += n[1] * w_i;
+            mesh.vertices[idx].normal[2] += n[2] * w_i;
+        }
+    }
+
+    for v in &mut mesh.vertices {
+        let len = (v.normal[0].powi(2) + v.normal[1].powi(2) + v.normal[2].powi(2)).sqrt();
+        if len > 1e-6 {
+            v.normal[0] /= len;
+            v.normal[1] /= len;
+            v.normal[2] /= len;
+        }
+    }
+}
+
+fn angle_weight(a: [f32; 3], b: [f32; 3]) -> f32 {
+    let la = (a[0] * a[0] + a[1] * a[1] + a[2] * a[2]).sqrt().max(1e-8);
+    let lb = (b[0] * b[0] + b[1] * b[1] + b[2] * b[2]).sqrt().max(1e-8);
+
+    ((a[0] / la) * (b[0] / lb) + (a[1] / la) * (b[1] / lb) + (a[2] / la) * (b[2] / lb))
+        .clamp(-1.0, 1.0)
+        .acos()
+}
+
+pub fn smooth_mesh_laplacian(mesh: &mut Mesh, iterations: usize) {
+    let vertex_count = mesh.vertices.len();
+    let mut neighbors: Vec<Vec<usize>> = vec![Vec::new(); vertex_count];
+
+    for face in &mesh.faces {
+        let [i0, i1, i2] = face.points;
+        for (a, b) in [(i0, i1), (i1, i2), (i2, i0), (i1, i0), (i2, i1), (i0, i2)] {
+            if !neighbors[a].contains(&b) {
+                neighbors[a].push(b);
+            }
+        }
+    }
+
+    let lambda = 0.5f32;
+
+    for _ in 0..iterations {
+        let old_positions: Vec<[f32; 3]> = mesh.vertices.iter().map(|v| v.pos).collect();
+
+        for (i, v) in mesh.vertices.iter_mut().enumerate() {
+            let nbrs = &neighbors[i];
+            if nbrs.is_empty() {
+                continue;
+            }
+            let mut avg = [0.0f32; 3];
+            for &n in nbrs {
+                avg[0] += old_positions[n][0];
+                avg[1] += old_positions[n][1];
+                avg[2] += old_positions[n][2];
+            }
+            let count = nbrs.len() as f32;
+            v.pos[0] = v.pos[0] * (1.0 - lambda) + (avg[0] / count) * lambda;
+            v.pos[1] = v.pos[1] * (1.0 - lambda) + (avg[1] / count) * lambda;
+            v.pos[2] = v.pos[2] * (1.0 - lambda) + (avg[2] / count) * lambda;
+        }
     }
 }
 
@@ -266,12 +336,13 @@ pub fn edge_idx_to_point_coord(
         p2[2] as usize + pos[2],
     );
 
-    let lerp = -val2 / (val1 - val2);
+    // Corrected lerp: t is the fraction along p1->p2 where the isosurface crosses zero.
+    let t = val1 / (val1 - val2);
 
     [
-        (p1[0] as f32) * lerp + (p2[0] as f32) * (1.0 - lerp),
-        (p1[1] as f32) * lerp + (p2[1] as f32) * (1.0 - lerp),
-        (p1[2] as f32) * lerp + (p2[2] as f32) * (1.0 - lerp),
+        (p1[0] as f32) * (1.0 - t) + (p2[0] as f32) * t,
+        (p1[1] as f32) * (1.0 - t) + (p2[1] as f32) * t,
+        (p1[2] as f32) * (1.0 - t) + (p2[2] as f32) * t,
     ]
 }
 
