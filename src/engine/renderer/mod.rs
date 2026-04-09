@@ -145,6 +145,10 @@ pub struct Renderer {
 /*
  *
  */
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ObjectDataID(pub u32);
+
 impl Renderer {
     fn next_mesh_id(&mut self) -> u32 {
         self.last_mesh_id += 1;
@@ -164,7 +168,7 @@ impl Renderer {
     /*
      * inserts an ObjectData into the internal datastructures and returns its ids
      */
-    fn create_object_data(&mut self, meshes: Vec<MeshData>) -> u32 {
+    pub fn create_object_data(&mut self, meshes: Vec<MeshData>) -> ObjectDataID {
         let ids = meshes.iter().cloned().map(|m| self.add_mesh(m)).collect();
         let oid = self.next_object_id();
         let data = ObjectData {
@@ -172,7 +176,7 @@ impl Renderer {
             meshes: ids,
         };
         self.object_data.insert(oid, data);
-        return oid;
+        return ObjectDataID(oid);
         //TODO: check if fitting object is present
     }
 
