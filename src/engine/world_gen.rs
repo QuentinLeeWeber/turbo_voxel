@@ -1,5 +1,4 @@
 const PERLIN_SEED: u32 = 123456789;
-const PERLIN_CHUNK_WIDTH: i32 = 4;
 
 use super::{CHUNK_WIDTH, Chunk, Material};
 
@@ -32,7 +31,7 @@ pub fn generate_chunk(x: i32, y: i32, z: i32) -> Chunk {
     };
 
     let sea_level = 8.0;
-    let mut terrain = ridged_noise(x, y);
+    let mut terrain = ridged_noise(x, y, NoiseParams::default());
 
     for xi in 0..CHUNK_WIDTH {
         for yi in 0..CHUNK_WIDTH {
@@ -57,7 +56,25 @@ pub fn generate_chunk(x: i32, y: i32, z: i32) -> Chunk {
     chunk
 }
 
-fn ridged_noise(offset_x: i32, offset_y: i32) -> Box<[[f32; CHUNK_WIDTH]; CHUNK_WIDTH]> {
+pub struct NoiseParams {
+    pub amplitude: f32,
+    pub gradient_spacing: i32,
+}
+
+impl Default for NoiseParams {
+    fn default() -> Self {
+        Self {
+            amplitude: 40.0,
+            gradient_spacing: 100,
+        }
+    }
+}
+
+fn ridged_noise(
+    offset_x: i32,
+    offset_y: i32,
+    params: NoiseParams,
+) -> Box<[[f32; CHUNK_WIDTH]; CHUNK_WIDTH]> {
     let octaves = 2;
     let lacunarity = 0.5;
     let gain = 1.0;
@@ -68,11 +85,11 @@ fn ridged_noise(offset_x: i32, offset_y: i32) -> Box<[[f32; CHUNK_WIDTH]; CHUNK_
         Box::from_raw(ptr)
     };
 
-    let perlin_noise = PerlinNoise::new(PERLIN_SEED, offset_x, offset_y);
+    let perlin_noise = PerlinNoise::new(PERLIN_SEED, offset_x, offset_y, params.gradient_spacing);
 
     for x in 0..CHUNK_WIDTH {
         for y in 0..CHUNK_WIDTH {
-            let mut amplitude = 3.0;
+            let mut amplitude = params.amplitude;
             let mut frequency = 1.0;
             let mut noise_sum = 0.0;
             let mut weight = 1.0;
@@ -97,23 +114,20 @@ fn ridged_noise(offset_x: i32, offset_y: i32) -> Box<[[f32; CHUNK_WIDTH]; CHUNK_
     map
 }
 
-const GRAD_SIZE: usize = (CHUNK_WIDTH / PERLIN_CHUNK_WIDTH as usize) + 1;
-
 struct PerlinNoise {
-    grads: Box<[[[f32; 2]; GRAD_SIZE]; GRAD_SIZE]>,
+    grads: Vec<Vec<[f32; 2]>>,
+    gradient_spacing: i32,
 }
 
 impl PerlinNoise {
-    fn new(seed: u32, offset_x: i32, offset_y: i32) -> Self {
-        let mut grads = unsafe {
-            let layout = std::alloc::Layout::new::<[[[f32; 2]; GRAD_SIZE]; GRAD_SIZE]>();
-            let ptr = std::alloc::alloc_zeroed(layout) as *mut [[[f32; 2]; GRAD_SIZE]; GRAD_SIZE];
-            Box::from_raw(ptr)
-        };
+    fn new(seed: u32, offset_x: i32, offset_y: i32, gradient_spacing: i32) -> Self {
+        let grad_size = (CHUNK_WIDTH as i32 / gradient_spacing + 2) as usize;
 
-        for x in 0..GRAD_SIZE {
-            for y in 0..GRAD_SIZE {
-                let grid_cells = CHUNK_WIDTH as i32 / PERLIN_CHUNK_WIDTH;
+        let mut grads = vec![vec![[0.0f32; 2]; grad_size]; grad_size];
+
+        for x in 0..grad_size {
+            for y in 0..grad_size {
+                let grid_cells = CHUNK_WIDTH as i32 / gradient_spacing;
                 grads[x][y] = random_grad(
                     x as i32 + offset_x * grid_cells,
                     y as i32 + offset_y * grid_cells,
@@ -122,12 +136,15 @@ impl PerlinNoise {
             }
         }
 
-        Self { grads }
+        Self {
+            grads,
+            gradient_spacing,
+        }
     }
 
     fn noise(&self, x: i32, y: i32) -> f32 {
-        let x0 = floor_div(x, PERLIN_CHUNK_WIDTH);
-        let y0 = floor_div(y, PERLIN_CHUNK_WIDTH);
+        let x0 = floor_div(x, self.gradient_spacing);
+        let y0 = floor_div(y, self.gradient_spacing);
         let x1 = x0 + 1;
         let y1 = y0 + 1;
 
@@ -136,8 +153,8 @@ impl PerlinNoise {
         let g01 = self.grads[x0 as usize][y1 as usize];
         let g11 = self.grads[x1 as usize][y1 as usize];
 
-        let fx = floor_mod(x, PERLIN_CHUNK_WIDTH) as f32 / PERLIN_CHUNK_WIDTH as f32;
-        let fy = floor_mod(y, PERLIN_CHUNK_WIDTH) as f32 / PERLIN_CHUNK_WIDTH as f32;
+        let fx = floor_mod(x, self.gradient_spacing) as f32 / self.gradient_spacing as f32;
+        let fy = floor_mod(y, self.gradient_spacing) as f32 / self.gradient_spacing as f32;
 
         let d00 = [fx, fy];
         let d10 = [fx - 1.0, fy];
