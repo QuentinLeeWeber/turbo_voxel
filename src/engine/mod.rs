@@ -124,6 +124,7 @@ trait GameObject {
     fn get_transform(&self) -> Transform;
     fn get_hitbox(&self) -> HitBox;
     fn notify(&mut self) -> Vec<Event>;
+    fn give_collision_info(&mut self, col_info: physics::ColInfo) -> ();
 }
 
 pub struct Engine {
