@@ -129,9 +129,6 @@ pub struct Renderer {
     window: Option<Arc<Window>>,
     cursor_grabbed: bool,
 }
-/*
- *
- */
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ObjectDataID(pub u32);
@@ -152,6 +149,13 @@ impl Renderer {
 
         //fn recreate_buffers
 
+        self.recreate_buffers();
+    }
+
+    /*
+     * recreates all buffers from mesh_object and meshes and instances
+     */
+    fn recreate_buffers(&mut self) {
         //für jedes Mesh in welchem Objekt
         let mut mesh_object: HashMap<u32, Vec<u32>> = HashMap::new();
         for (id, object) in &self.object_data {
@@ -164,18 +168,18 @@ impl Renderer {
         //entferne ungenutzte Meshes aus MeshData
         self.mesh_data.retain(|id, _| mesh_object.contains_key(id));
 
-        let mut instance_data: Vec<&InstanceData> = Vec::new();
+        let mut instance_data: Vec<InstanceData> = Vec::new();
         let mut vertex_bufer: Vec<VertexData> = Vec::new();
         let mut index_buffer: Vec<u32> = Vec::new();
         let mut commands: Vec<DrawIndexedIndirectCommand> = Vec::new();
 
         for mesh in meshes {
             //für jedes Mesh in Objekt Reihenfolge die InstanceData
-            let mut mesh_instances: Vec<&InstanceData> = mesh_object
+            let mut mesh_instances: Vec<InstanceData> = mesh_object
                 .get(&mesh)
                 .unwrap()
                 .iter()
-                .map(|o| self.instances.get(o).unwrap())
+                .map(|o| self.instances.get(o).unwrap().clone())
                 .flatten()
                 .collect();
 
@@ -195,11 +199,79 @@ impl Renderer {
             vertex_bufer.append(&mut data.vertices.clone());
             index_buffer.append(&mut data.indices.clone());
             commands.push(command);
-
             instance_data.append(&mut mesh_instances);
         }
 
-        //lade neue Buffer hoch
+        self.recreate_index_buffer(&index_buffer);
+        self.recreate_vertex_buffer(&vertex_bufer);
+        self.recreate_instance_buffer(&instance_data);
+        self.recreate_command_buffer(&commands);
+    }
+
+    fn recreate_index_buffer(&mut self, indices: &Vec<u32>) {
+        let new_buffer = Buffer::from_iter(
+            self.memory_allocator.clone(),
+            BufferCreateInfo {
+                usage: BufferUsage::INDEX_BUFFER,
+                ..Default::default()
+            },
+            AllocationCreateInfo {
+                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
+                    | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
+                ..Default::default()
+            },
+            indices.iter().cloned(),
+        )
+        .unwrap();
+        self.index_buffer = new_buffer;
+    }
+    fn recreate_vertex_buffer(&mut self, vertices: &Vec<VertexData>) {
+        self.vertex_buffer = Buffer::from_iter(
+            self.memory_allocator.clone(),
+            BufferCreateInfo {
+                usage: BufferUsage::VERTEX_BUFFER,
+                ..Default::default()
+            },
+            AllocationCreateInfo {
+                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
+                    | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
+                ..Default::default()
+            },
+            vertices.iter().cloned(),
+        )
+        .unwrap();
+    }
+    fn recreate_instance_buffer(&mut self, instances: &Vec<InstanceData>) {
+        self.instance_buffer = Buffer::from_iter(
+            self.memory_allocator.clone(),
+            BufferCreateInfo {
+                usage: BufferUsage::VERTEX_BUFFER,
+                ..Default::default()
+            },
+            AllocationCreateInfo {
+                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
+                    | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
+                ..Default::default()
+            },
+            instances.iter().cloned(),
+        )
+        .unwrap();
+    }
+    fn recreate_command_buffer(&mut self, commands: &Vec<DrawIndexedIndirectCommand>) {
+        self.indirect_buffer = Buffer::from_iter(
+            self.memory_allocator.clone(),
+            BufferCreateInfo {
+                usage: BufferUsage::INDIRECT_BUFFER,
+                ..Default::default()
+            },
+            AllocationCreateInfo {
+                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
+                    | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
+                ..Default::default()
+            },
+            commands.iter().cloned(),
+        )
+        .unwrap();
     }
 
     fn add_mesh(&mut self, mesh: MeshData) -> u32 {
