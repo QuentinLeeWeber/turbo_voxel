@@ -2,14 +2,15 @@ use cgmath::Matrix4;
 
 use vulkano::{buffer::BufferContents, pipeline::graphics::vertex_input::Vertex};
 
+use crate::engine::renderer::{GameObjectID, ObjectDataID};
+
 /*
  * a low level object that can be loaded from a file
  */
-//TODO: implement loading into and unloading from renderer
-//TODO: implement rendering in renderer
+
 #[derive(Debug, Clone)]
 pub struct ObjectData {
-    pub id: u32,
+    pub id: ObjectDataID,
     pub meshes: Vec<u32>, //list of mesh ids
 }
 
@@ -62,7 +63,7 @@ impl VertexData {
 }
 #[derive(Copy, Clone)]
 pub struct GPUInstance {
-    pub instance_id: u32, //die globale ID
+    pub instance_id: GameObjectID, //die globale ID
     pub instance: InstanceData,
 }
 

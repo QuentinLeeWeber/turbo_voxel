@@ -1,6 +1,8 @@
 use crate::engine::camera::{Camera, Projection};
+use crate::game_object::GameObjectID;
 use cgmath::{Deg, Point3, Rad};
 use std::{collections::HashMap, ops::RangeInclusive, sync::Arc};
+use vulkano::command_buffer::DrawIndirectCommand;
 use vulkano::device::DeviceFeatures;
 use vulkano::{
     Validated, VulkanError, VulkanLibrary,
@@ -91,24 +93,17 @@ struct MeshBufferInfo {
 
 pub struct Renderer {
     library: Arc<VulkanLibrary>,
-    object_data: HashMap<u32, ObjectData>,
+    object_data: HashMap<ObjectDataID, ObjectData>,
     mesh_data: HashMap<u32, MeshData>,
     instance: Arc<Instance>,
-
-    instances: Vec<GPUInstance>,
-    max_instance_count: usize,
-    instance_buffer: Subbuffer<[InstanceData]>,
-
-    indirect_commands: Vec<DrawIndexedIndirectCommand>,
-    max_indirect_commands: usize,
+    instances: HashMap<ObjectDataID, Vec<GPUInstance>>,
 
     command_buffer_allocator: Arc<StandardCommandBufferAllocator>,
     memory_allocator: Arc<StandardMemoryAllocator>,
     descriptor_set_allocator: Arc<StandardDescriptorSetAllocator>,
 
+    instance_buffer: Subbuffer<[InstanceData]>,
     vertex_buffer: Subbuffer<[VertexData]>,
-    max_vertex_count: u32,
-
     index_buffer: Subbuffer<[u32]>,
     indirect_buffer: Subbuffer<[DrawIndexedIndirectCommand]>,
 
@@ -117,8 +112,6 @@ pub struct Renderer {
 
     queue_family_index: u32,
     queue: Arc<Queue>,
-
-    mesh_buffer_mapping: HashMap<u32, MeshBufferInfo>,
 
     camera_buffer: Subbuffer<vs::Camera>,
 
@@ -133,11 +126,8 @@ pub struct Renderer {
     window: Option<Arc<Window>>,
     cursor_grabbed: bool,
 }
-/*
- *
- */
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ObjectDataID(pub u32);
 
 impl Renderer {
@@ -148,6 +138,145 @@ impl Renderer {
     fn next_object_id(&mut self) -> u32 {
         self.last_object_id += 1;
         self.last_object_id
+    }
+
+    pub fn remove_game_object(&mut self, instance_id: GameObjectID) {
+        //entferne instanz
+
+        self.instances
+            .iter_mut()
+            .for_each(|(_, v)| v.retain(|i| i.instance_id != instance_id));
+
+        self.recreate_buffers();
+    }
+
+    /*
+     * recreates all buffers from mesh_object and meshes and instances
+     */
+    fn recreate_buffers(&mut self) {
+        //für jedes Mesh in welchem Objekt
+        let mut mesh_object: HashMap<u32, Vec<ObjectDataID>> = HashMap::new();
+        for (id, object) in &self.object_data {
+            for &mesh in &object.meshes {
+                mesh_object.entry(mesh).or_default().push(*id);
+            }
+        }
+        let meshes: Vec<u32> = mesh_object.keys().cloned().collect();
+
+        //entferne ungenutzte Meshes aus MeshData
+        self.mesh_data.retain(|id, _| mesh_object.contains_key(id));
+
+        let mut instance_data: Vec<InstanceData> = Vec::new();
+        let mut vertex_bufer: Vec<VertexData> = Vec::new();
+        let mut index_buffer: Vec<u32> = Vec::new();
+        let mut commands: Vec<DrawIndexedIndirectCommand> = Vec::new();
+
+        for mesh in meshes {
+            //für jedes Mesh in Objekt Reihenfolge die InstanceData
+            let mut mesh_instances: Vec<InstanceData> = mesh_object
+                .get(&mesh)
+                .unwrap()
+                .iter()
+                .map(|o| {
+                    self.instances
+                        .get(o)
+                        .unwrap()
+                        .iter()
+                        .map(|i| i.instance)
+                        .clone()
+                })
+                .flatten()
+                .collect();
+
+            //erstelle meshBufferMapping
+            let data = self.mesh_data.get(&mesh).unwrap();
+
+            //für jedes Mesh IndirectDrawCommand
+            let command = DrawIndexedIndirectCommand {
+                index_count: data.indices.len() as u32,
+                instance_count: mesh_instances.len() as u32,
+                first_instance: instance_data.len() as u32,
+                first_index: index_buffer.len() as u32,
+                vertex_offset: 0,
+            };
+
+            //erstelle Vertex und IndexBuffer
+            vertex_bufer.append(&mut data.vertices.clone());
+            index_buffer.append(&mut data.indices.clone());
+            commands.push(command);
+            instance_data.append(&mut mesh_instances);
+        }
+
+        self.recreate_index_buffer(&index_buffer);
+        self.recreate_vertex_buffer(&vertex_bufer);
+        self.recreate_instance_buffer(&instance_data);
+        self.recreate_command_buffer(&commands);
+    }
+
+    fn recreate_index_buffer(&mut self, indices: &Vec<u32>) {
+        let new_buffer = Buffer::from_iter(
+            self.memory_allocator.clone(),
+            BufferCreateInfo {
+                usage: BufferUsage::INDEX_BUFFER,
+                ..Default::default()
+            },
+            AllocationCreateInfo {
+                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
+                    | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
+                ..Default::default()
+            },
+            indices.iter().cloned(),
+        )
+        .unwrap();
+        self.index_buffer = new_buffer;
+    }
+    fn recreate_vertex_buffer(&mut self, vertices: &Vec<VertexData>) {
+        self.vertex_buffer = Buffer::from_iter(
+            self.memory_allocator.clone(),
+            BufferCreateInfo {
+                usage: BufferUsage::VERTEX_BUFFER,
+                ..Default::default()
+            },
+            AllocationCreateInfo {
+                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
+                    | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
+                ..Default::default()
+            },
+            vertices.iter().cloned(),
+        )
+        .unwrap();
+    }
+    fn recreate_instance_buffer(&mut self, instances: &Vec<InstanceData>) {
+        self.instance_buffer = Buffer::from_iter(
+            self.memory_allocator.clone(),
+            BufferCreateInfo {
+                usage: BufferUsage::VERTEX_BUFFER,
+                ..Default::default()
+            },
+            AllocationCreateInfo {
+                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
+                    | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
+                ..Default::default()
+            },
+            instances.iter().cloned(),
+        )
+        .unwrap();
+    }
+    fn recreate_command_buffer(&mut self, commands: &Vec<DrawIndexedIndirectCommand>) {
+        self.indirect_buffer = Buffer::from_iter(
+            self.memory_allocator.clone(),
+            BufferCreateInfo {
+                usage: BufferUsage::INDIRECT_BUFFER,
+                ..Default::default()
+            },
+            AllocationCreateInfo {
+                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
+                    | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
+                ..Default::default()
+            },
+            commands.iter().cloned(),
+        )
+        .unwrap();
     }
 
     fn add_mesh(&mut self, mesh: MeshData) -> u32 {
@@ -161,124 +290,33 @@ impl Renderer {
      */
     pub fn create_object_data(&mut self, meshes: Vec<MeshData>) -> ObjectDataID {
         let ids = meshes.iter().cloned().map(|m| self.add_mesh(m)).collect();
-        let oid = self.next_object_id();
+        let oid = ObjectDataID(self.next_object_id());
         let data = ObjectData {
             id: oid,
             meshes: ids,
         };
         self.object_data.insert(oid, data);
-        ObjectDataID(oid)
+        oid
         //TODO: check if fitting object is present
     }
 
     /*
-     * Loads ObjectData into render buffers
-     */
-    pub fn load_object_data(&mut self, data_id: u32) {
-        let object_data = self.object_data.get(&data_id).unwrap();
-        let meshes = object_data.clone().meshes;
-
-        for mesh in meshes {
-            let mesh_data = self.mesh_data.get(&mesh).unwrap().clone();
-            let v_len = mesh_data.vertices.len() as u32;
-            let i_len = mesh_data.indices.len() as u32;
-            let info = MeshBufferInfo {
-                first_vertex: self.last_vertex_index,
-                index_count: mesh_data.indices.len() as u32,
-                index_start: self.last_index_index,
-            };
-            self.mesh_buffer_mapping.insert(mesh, info);
-
-            self.upload_to_vertex_buffer(&mesh_data, v_len);
-            self.upload_to_index_buffer(&mesh_data, i_len);
-
-            self.last_vertex_index += v_len;
-            self.last_index_index += i_len;
-        }
-    }
-
-    fn upload_to_index_buffer(&mut self, mesh_data: &MeshData, i_len: u32) {
-        if self.last_index_index + i_len > self.index_buffer.len() as u32 {
-            let old_buffer = self.index_buffer.clone();
-            let new_capacity = (old_buffer.len() as u32 + i_len) * 2;
-
-            let new_buffer = Buffer::new_slice::<u32>(
-                self.memory_allocator.clone(),
-                BufferCreateInfo {
-                    usage: BufferUsage::INDEX_BUFFER,
-                    ..Default::default()
-                },
-                AllocationCreateInfo {
-                    memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
-                        | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
-                    ..Default::default()
-                },
-                new_capacity as u64,
-            )
-            .unwrap();
-
-            // Daten kopieren
-            if let (Ok(old_map), Ok(mut new_map)) = (old_buffer.read(), new_buffer.write()) {
-                let old_len = old_buffer.len() as usize;
-                new_map[..old_len].copy_from_slice(&old_map);
-                println!("Index Buffer migrated to capacity: {}", new_capacity);
-            }
-            self.index_buffer = new_buffer;
-        }
-
-        if let Ok(mut mapping) = self.index_buffer.write() {
-            let start = self.last_index_index as usize;
-            mapping[start..start + mesh_data.indices.len()].copy_from_slice(&mesh_data.indices);
-        }
-    }
-
-    fn upload_to_vertex_buffer(&mut self, mesh_data: &MeshData, v_len: u32) {
-        if self.last_vertex_index + v_len > self.vertex_buffer.len() as u32 {
-            let old_buffer = self.vertex_buffer.clone(); // Alten Buffer kurz festhalten
-            let new_capacity = (old_buffer.len() as u32 + v_len) * 2;
-
-            let new_buffer = Buffer::new_slice::<VertexData>(
-                self.memory_allocator.clone(),
-                BufferCreateInfo {
-                    usage: BufferUsage::VERTEX_BUFFER,
-                    ..Default::default()
-                },
-                AllocationCreateInfo {
-                    memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
-                        | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
-                    ..Default::default()
-                },
-                new_capacity as u64,
-            )
-            .unwrap();
-
-            // Daten vom alten in den neuen Buffer kopieren
-            if let (Ok(old_map), Ok(mut new_map)) = (old_buffer.read(), new_buffer.write()) {
-                let old_len = old_buffer.len() as usize;
-                new_map[..old_len].copy_from_slice(&old_map);
-                println!("Vertex Buffer migrated to capacity: {}", new_capacity);
-            }
-            self.vertex_buffer = new_buffer;
-        }
-        if let Ok(mut mapping) = self.vertex_buffer.write() {
-            let start = self.last_vertex_index as usize;
-            mapping[start..start + mesh_data.vertices.len()].copy_from_slice(&mesh_data.vertices);
-        }
-    }
-    /*
      * Instantiates an Object where ObjectData is allready uploaded
      */
-    pub fn add_object_instance(&mut self, object_data_id: u32, instance: GPUInstance) {
-        self.add_instance(instance);
-        let mesh_ids: Vec<u32> = self
-            .object_data
-            .get(&object_data_id)
-            .expect("Object ID not found")
-            .meshes
-            .clone();
-        for mesh_id in mesh_ids {
-            self.add_indirect_draw(mesh_id);
-        }
+    pub fn add_object_instance(
+        &mut self,
+        instance: InstanceData,
+        instance_id: GameObjectID,
+        object_id: ObjectDataID,
+    ) {
+        self.instances
+            .entry(object_id)
+            .or_default()
+            .push(GPUInstance {
+                instance: instance,
+                instance_id: instance_id,
+            });
+        self.recreate_buffers();
     }
     /*
      * creates a new object instance from an object that was never uploaded
@@ -289,93 +327,37 @@ impl Renderer {
         &mut self,
         meshes: Vec<MeshData>,
         instance: InstanceData,
+        id: GameObjectID,
     ) -> ObjectDataID {
-        let id = self.create_object_data(meshes);
-        self.load_object_data(id.0);
-        let gi = GPUInstance {
-            instance_id: id.0,
-            instance,
-        };
-        self.add_object_instance(id.0, gi);
-        id
+        let object_id = self.create_object_data(meshes);
+
+        self.add_object_instance(instance, id, object_id);
+
+        object_id
     }
+
     /*
      * update a allready present instance and change their transforms
      * use this to set new positions from simulation
      * TODO: Batch operation
      */
-    pub fn update_object_instance(&mut self, instanz_id: u32, instanz: InstanceData) {
-        let ind = self
+    pub fn update_object_instance(
+        &mut self,
+        objekt_id: ObjectDataID,
+        instanz_id: GameObjectID,
+        instanz: InstanceData,
+    ) {
+        let obj = self
             .instances
+            .get_mut(&objekt_id)
+            .expect("Objekt nicht gefunden");
+        let ind = obj
             .iter()
             .position(|i| i.instance_id == instanz_id)
-            .unwrap();
-        self.instances[ind].instance = instanz;
+            .expect("Instanz ID nicht gefunden");
+        obj[ind].instance = instanz;
 
-        if let Ok(mut mapping) = self.instance_buffer.write() {
-            mapping[ind] = instanz;
-            println!("A Object update happened");
-        }
-    }
-
-    fn add_indirect_draw(&mut self, mesh_id: u32) {
-        let info = self.mesh_buffer_mapping.get(&mesh_id).unwrap();
-
-        self.indirect_commands.push(DrawIndexedIndirectCommand {
-            index_count: info.index_count,
-            instance_count: 1,
-            first_index: info.index_start,
-            vertex_offset: 0,
-            first_instance: (self.instances.len() - 1) as u32,
-        });
-        let count = self.indirect_commands.len();
-
-        if count > self.max_indirect_commands {
-            self.max_indirect_commands = count * 2 + 1;
-            self.indirect_buffer = Buffer::from_iter(
-                self.memory_allocator.clone(),
-                BufferCreateInfo {
-                    usage: BufferUsage::INDIRECT_BUFFER,
-                    ..Default::default()
-                },
-                AllocationCreateInfo {
-                    memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
-                        | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
-                    ..Default::default()
-                },
-                self.indirect_commands.clone(),
-            )
-            .unwrap();
-        } else if let Ok(mut mapping) = self.indirect_buffer.write() {
-            mapping[..count].copy_from_slice(&self.indirect_commands);
-        }
-    }
-
-    fn add_instance(&mut self, instanz: GPUInstance) {
-        self.instances.push(instanz);
-        let count = self.instances.len();
-
-        if count > self.max_instance_count {
-            self.max_instance_count = count * 2 + 1;
-            self.instance_buffer = Buffer::from_iter(
-                self.memory_allocator.clone(),
-                BufferCreateInfo {
-                    usage: BufferUsage::VERTEX_BUFFER,
-                    ..Default::default()
-                },
-                AllocationCreateInfo {
-                    memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
-                        | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
-                    ..Default::default()
-                },
-                self.instances.iter().map(|i| i.instance),
-            )
-            .unwrap();
-        } else if let Ok(mut mapping) = self.instance_buffer.write() {
-            for (i, inst) in self.instances.iter().take(count).enumerate() {
-                mapping[i] = inst.instance;
-            }
-        }
+        self.recreate_buffers();
     }
 
     pub fn new(event_loop: &impl HasDisplayHandle) -> Renderer {
@@ -472,16 +454,11 @@ impl Renderer {
             vertex_buffer,
             render_data: None,
             indirect_buffer,
-            instances: Vec::new(),
-            indirect_commands: Vec::new(),
-            max_indirect_commands: 1024,
-            max_instance_count: 1024,
+            instances: HashMap::new(),
             object_data: HashMap::new(),
-            mesh_buffer_mapping: HashMap::new(),
             index_buffer,
             camera_buffer,
             descriptor_set_allocator,
-            max_vertex_count: 1024,
             last_mesh_id: 1024,
             last_object_id: 1024,
             last_vertex_index: 0,
@@ -656,7 +633,7 @@ impl Renderer {
                 data.camera_uniform_descriptor_set.clone(), // Hier kommt das Set rein
             )
             .unwrap();
-        let command_count = self.indirect_commands.len() as u64;
+        let command_count = self.indirect_buffer.len() as u64;
 
         if command_count > 0 {
             let buffer_slice = self.indirect_buffer.clone().slice(0..command_count);
