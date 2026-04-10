@@ -151,9 +151,17 @@ impl Renderer {
 
     pub fn remove_object(&mut self, object_data_id: ObjectDataID) {
         //entferne object aus objects
+        self.object_data.remove(&object_data_id.0);
 
         //fn recreate_buffers
-        
+
+        let mut mesh_object: HashMap<u32, Vec<u32>> = HashMap::new();
+        for (id, object) in &self.object_data {
+            for &mesh in &object.meshes {
+                mesh_object.entry(mesh).or_default().push(*id);
+            }
+        }
+
         //für jedes Mesh in welchem Objekt
         //für jedes Mesh die Liste an InstanceData
         //Menge an InstanceData in Mesh reihenfolge in Array
