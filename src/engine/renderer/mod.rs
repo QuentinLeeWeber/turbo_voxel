@@ -151,6 +151,7 @@ impl Renderer {
 
     /*
      * recreates all buffers from mesh_object and meshes and instances
+     * TODO: add deduplication here
      */
     fn recreate_buffers(&mut self) {
         //für jedes Mesh in welchem Objekt
@@ -286,7 +287,7 @@ impl Renderer {
     /*
      * inserts an ObjectData into the internal datastructures and returns its ids
      */
-    pub fn create_object_data(&mut self, meshes: Vec<MeshData>) -> ObjectDataID {
+    fn create_object_data(&mut self, meshes: Vec<MeshData>) -> ObjectDataID {
         let ids = meshes.iter().cloned().map(|m| self.add_mesh(m)).collect();
         let oid = ObjectDataID(self.next_object_id());
         let data = ObjectData {
@@ -296,6 +297,31 @@ impl Renderer {
         self.object_data.insert(oid, data);
         oid
         //TODO: check if fitting object is present
+    }
+
+    /*
+     * updates the used meshes of a game object
+     */
+    pub fn update_object_mesh(
+        &mut self,
+        game_object_id: GameObjectID,
+        old_object_data: ObjectDataID,
+        meshes: Vec<MeshData>,
+    ) -> ObjectDataID {
+        //nehme instanz Daten und entferne
+        let all_instances = self.instances.get_mut(&old_object_data).unwrap();
+        let instance = all_instances
+            .iter()
+            .find(|i| i.instance_id == game_object_id)
+            .unwrap()
+            .instance;
+        all_instances.retain(|i| i.instance_id != game_object_id);
+
+        //erstelle neues ObjectData
+        let object_id = self.create_object_data(meshes);
+        self.add_object_instance(instance, game_object_id, object_id);
+        self.recreate_buffers();
+        object_id
     }
 
     /*
@@ -851,7 +877,7 @@ impl Renderer {
         let mut e = [1; 3];
         e[0] = extend[0];
         e[1] = extend[1];
-        
+
         Image::new(
             self.memory_allocator.clone(),
             ImageCreateInfo {
