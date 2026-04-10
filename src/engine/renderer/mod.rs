@@ -94,8 +94,7 @@ pub struct Renderer {
     object_data: HashMap<u32, ObjectData>,
     mesh_data: HashMap<u32, MeshData>,
     instance: Arc<Instance>,
-
-    instances: Vec<GPUInstance>,
+    instances: HashMap<u32, Vec<InstanceData>>,
     max_instance_count: usize,
     instance_buffer: Subbuffer<[InstanceData]>,
 
@@ -148,6 +147,21 @@ impl Renderer {
     fn next_object_id(&mut self) -> u32 {
         self.last_object_id += 1;
         self.last_object_id
+    }
+
+    pub fn remove_object(&mut self, object_data_id: ObjectDataID) {
+        //entferne object aus objects
+
+        //fn recreate_buffers
+        
+        //für jedes Mesh in welchem Objekt
+        //für jedes Mesh die Liste an InstanceData
+        //Menge an InstanceData in Mesh reihenfolge in Array
+        //für jedes Mesh IndirectDrawCommand,
+
+        //entferne ungenutzte Meshes aus MeshData, MeshBufferMapping
+        //erstelle Vertex und IndexBuffer neu
+        //erstelle indirectDrawCommand und InstanceData neu
     }
 
     fn add_mesh(&mut self, mesh: MeshData) -> u32 {
