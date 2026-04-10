@@ -1,6 +1,6 @@
 use crate::{
     engine::camera::{Camera, CameraController, Projection},
-    game_object::{EndOfLife, GameObjectTrait},
+    game_object::{EndOfLife, GameObjectID, GameObjectTrait},
 };
 use cgmath::{Deg, Point3, Rad};
 use std::{collections::HashMap, sync::Arc};
@@ -50,7 +50,7 @@ pub struct Engine {
     camera_controller: CameraController,
     pub game_object_id_count: u32,
     pub renderer: Renderer,
-    scene: HashMap<u32, Box<dyn GameObjectTrait>>,
+    scene: HashMap<GameObjectID, Box<dyn GameObjectTrait>>,
 }
 
 impl Engine {
@@ -72,7 +72,7 @@ impl Engine {
     fn update(&mut self) {
         let mut index: u32 = 0;
         loop {
-            let object = self.scene.remove(&index);
+            let object = self.scene.remove(&GameObjectID(index));
             if let Some(mut object) = object {
                 match object.update(self) {
                     EndOfLife(true) => {
@@ -138,9 +138,10 @@ impl ApplicationHandler for Engine {
 
             WindowEvent::KeyboardInput { event, .. } => {
                 if let ElementState::Pressed = event.state
-                    && let PhysicalKey::Code(KeyCode::Escape) = event.physical_key {
-                        self.renderer.set_cursor_grab(false);
-                    }
+                    && let PhysicalKey::Code(KeyCode::Escape) = event.physical_key
+                {
+                    self.renderer.set_cursor_grab(false);
+                }
 
                 if let PhysicalKey::Code(key) = event.physical_key {
                     self.camera_controller.process_keyboard(key, event.state);

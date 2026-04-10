@@ -113,12 +113,13 @@ impl<T: 'static> GameObjectBuilder<T> {
     }
 
     pub fn build(self, engine: &mut Engine) {
-        let id = engine.game_object_id_count;
+        let id = GameObjectID(engine.game_object_id_count);
         engine.game_object_id_count += 1;
 
         let object_data = engine.renderer.instantiate_object(
             self.object_data,
             InstanceData::new(self.transform.pos, self.transform.rot),
+            id,
         );
 
         engine.add_game_object(Box::new(GameObject {
