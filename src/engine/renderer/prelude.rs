@@ -62,7 +62,6 @@ impl VertexData {
     }
 }
 
-use std::cmp::Ordering;
 use std::hash::{Hash, Hasher};
 
 // In prelude.rs oder dort, wo VertexData definiert ist
