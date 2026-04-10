@@ -1,6 +1,7 @@
 use crate::engine::camera::{Camera, Projection};
 use crate::game_object::GameObjectID;
 use cgmath::{Deg, Point3, Rad};
+use std::collections::HashSet;
 use std::{collections::HashMap, ops::RangeInclusive, sync::Arc};
 use vulkano::device::DeviceFeatures;
 use vulkano::{
@@ -94,6 +95,7 @@ pub struct Renderer {
     library: Arc<VulkanLibrary>,
     object_data: HashMap<ObjectDataID, ObjectData>,
     mesh_data: HashMap<u32, MeshData>,
+    mesh_dedup_map: HashMap<MeshData, u32>,
     instance: Arc<Instance>,
     instances: HashMap<ObjectDataID, Vec<GPUInstance>>,
 
@@ -146,12 +148,13 @@ impl Renderer {
             .iter_mut()
             .for_each(|(_, v)| v.retain(|i| i.instance_id != instance_id));
 
+        self.remove_unused_meshes();
+
         self.recreate_buffers();
     }
 
     /*
      * recreates all buffers from mesh_object and meshes and instances
-     * TODO: add deduplication here
      */
     fn recreate_buffers(&mut self) {
         //für jedes Mesh in welchem Objekt
@@ -279,9 +282,28 @@ impl Renderer {
     }
 
     fn add_mesh(&mut self, mesh: MeshData) -> u32 {
+        if let Some(&existing_id) = self.mesh_dedup_map.get(&mesh) {
+            return existing_id;
+        }
+
+        // Neues Mesh erstellen
         let id = self.next_mesh_id();
-        self.mesh_data.insert(id, mesh);
+        self.mesh_data.insert(id, mesh.clone());
+        self.mesh_dedup_map.insert(mesh, id);
         id
+    }
+    fn remove_unused_meshes(&mut self) {
+        // Sammle alle noch verwendeten Mesh-IDs
+        let used_meshes: HashSet<u32> = self
+            .object_data
+            .values()
+            .flat_map(|obj| &obj.meshes)
+            .cloned()
+            .collect();
+
+        // Entferne ungenutzte Meshes aus beiden Maps
+        self.mesh_data.retain(|id, _| used_meshes.contains(id));
+        self.mesh_dedup_map.retain(|_, id| used_meshes.contains(id));
     }
 
     /*
@@ -316,6 +338,8 @@ impl Renderer {
             .unwrap()
             .instance;
         all_instances.retain(|i| i.instance_id != game_object_id);
+
+        self.remove_unused_meshes();
 
         //erstelle neues ObjectData
         let object_id = self.create_object_data(meshes);
@@ -490,6 +514,7 @@ impl Renderer {
             mesh_data: HashMap::new(),
             window: None,
             cursor_grabbed: false,
+            mesh_dedup_map: HashMap::new(),
         }
     }
 

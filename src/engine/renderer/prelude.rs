@@ -61,6 +61,45 @@ impl VertexData {
         }
     }
 }
+
+use std::hash::{Hash, Hasher};
+
+// In prelude.rs oder dort, wo VertexData definiert ist
+impl PartialEq for VertexData {
+    fn eq(&self, other: &Self) -> bool {
+        self.position == other.position && self.normal == other.normal && self.color == other.color
+    }
+}
+
+impl Eq for VertexData {}
+
+impl Hash for VertexData {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        // Bitweise Hashing für f32-Werte
+        self.position.iter().for_each(|f| f.to_bits().hash(state));
+        self.normal.iter().for_each(|f| f.to_bits().hash(state));
+        self.color.iter().for_each(|f| f.to_bits().hash(state));
+    }
+}
+
+impl PartialEq for MeshData {
+    fn eq(&self, other: &Self) -> bool {
+        self.material_id == other.material_id
+            && self.vertices == other.vertices
+            && self.indices == other.indices
+    }
+}
+
+impl Eq for MeshData {}
+
+impl Hash for MeshData {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.material_id.hash(state);
+        self.vertices.hash(state);
+        self.indices.hash(state);
+    }
+}
+
 #[derive(Copy, Clone)]
 pub struct GPUInstance {
     pub instance_id: GameObjectID, //die globale ID
