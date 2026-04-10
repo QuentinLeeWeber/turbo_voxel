@@ -1,6 +1,7 @@
 use crate::engine::camera::{Camera, Projection};
 use cgmath::{Deg, Point3, Rad};
 use std::{collections::HashMap, ops::RangeInclusive, sync::Arc};
+use vulkano::command_buffer::DrawIndirectCommand;
 use vulkano::device::DeviceFeatures;
 use vulkano::{
     Validated, VulkanError, VulkanLibrary,
@@ -97,8 +98,6 @@ pub struct Renderer {
     instances: HashMap<u32, Vec<InstanceData>>,
     max_instance_count: usize,
     instance_buffer: Subbuffer<[InstanceData]>,
-
-    indirect_commands: Vec<DrawIndexedIndirectCommand>,
     max_indirect_commands: usize,
 
     command_buffer_allocator: Arc<StandardCommandBufferAllocator>,
@@ -116,8 +115,6 @@ pub struct Renderer {
 
     queue_family_index: u32,
     queue: Arc<Queue>,
-
-    mesh_buffer_mapping: HashMap<u32, MeshBufferInfo>,
 
     camera_buffer: Subbuffer<vs::Camera>,
 
@@ -155,21 +152,54 @@ impl Renderer {
 
         //fn recreate_buffers
 
+        //für jedes Mesh in welchem Objekt
         let mut mesh_object: HashMap<u32, Vec<u32>> = HashMap::new();
         for (id, object) in &self.object_data {
             for &mesh in &object.meshes {
                 mesh_object.entry(mesh).or_default().push(*id);
             }
         }
+        let meshes: Vec<u32> = mesh_object.keys().cloned().collect();
 
-        //für jedes Mesh in welchem Objekt
-        //für jedes Mesh die Liste an InstanceData
-        //Menge an InstanceData in Mesh reihenfolge in Array
-        //für jedes Mesh IndirectDrawCommand,
+        //entferne ungenutzte Meshes aus MeshData
+        self.mesh_data.retain(|id, _| mesh_object.contains_key(id));
 
-        //entferne ungenutzte Meshes aus MeshData, MeshBufferMapping
-        //erstelle Vertex und IndexBuffer neu
-        //erstelle indirectDrawCommand und InstanceData neu
+        let mut instance_data: Vec<&InstanceData> = Vec::new();
+        let mut vertex_bufer: Vec<VertexData> = Vec::new();
+        let mut index_buffer: Vec<u32> = Vec::new();
+        let mut commands: Vec<DrawIndexedIndirectCommand> = Vec::new();
+
+        for mesh in meshes {
+            //für jedes Mesh in Objekt Reihenfolge die InstanceData
+            let mut mesh_instances: Vec<&InstanceData> = mesh_object
+                .get(&mesh)
+                .unwrap()
+                .iter()
+                .map(|o| self.instances.get(o).unwrap())
+                .flatten()
+                .collect();
+
+            //erstelle meshBufferMapping
+            let data = self.mesh_data.get(&mesh).unwrap();
+
+            //für jedes Mesh IndirectDrawCommand
+            let command = DrawIndexedIndirectCommand {
+                index_count: data.indices.len() as u32,
+                instance_count: mesh_instances.len() as u32,
+                first_instance: instance_data.len() as u32,
+                first_index: index_buffer.len() as u32,
+                vertex_offset: 0,
+            };
+
+            //erstelle Vertex und IndexBuffer
+            vertex_bufer.append(&mut data.vertices.clone());
+            index_buffer.append(&mut data.indices.clone());
+            commands.push(command);
+
+            instance_data.append(&mut mesh_instances);
+        }
+
+        //lade neue Buffer hoch
     }
 
     fn add_mesh(&mut self, mesh: MeshData) -> u32 {
