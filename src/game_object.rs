@@ -5,6 +5,9 @@ use crate::engine::{
 use crate::hit_box::HitBox;
 use cgmath::{Quaternion, Vector3, Zero};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct GameObjectID(pub u32);
+
 #[derive(Debug, Clone, Copy)]
 pub struct Transform {
     pub pos: Vector3<f32>,
@@ -21,7 +24,7 @@ impl Default for Transform {
 }
 
 pub trait GameObjectTrait {
-    fn get_id(&self) -> u32;
+    fn get_id(&self) -> GameObjectID;
     fn update(&mut self, engine: &mut Engine) -> EndOfLife;
     fn get_transform(&self) -> Transform;
     fn get_hitbox(&self) -> HitBox;
@@ -30,7 +33,7 @@ pub trait GameObjectTrait {
 
 pub struct GameObject<T> {
     pub data: T,
-    id: u32,
+    id: GameObjectID,
     hitbox: HitBox,
     control_function: Option<Box<dyn FnMut(&mut T, &mut Engine) -> EndOfLife>>,
     transform: Transform,
@@ -38,7 +41,7 @@ pub struct GameObject<T> {
 }
 
 impl<T> GameObjectTrait for GameObject<T> {
-    fn get_id(&self) -> u32 {
+    fn get_id(&self) -> GameObjectID {
         self.id
     }
     fn update(&mut self, engine: &mut Engine) -> EndOfLife {
