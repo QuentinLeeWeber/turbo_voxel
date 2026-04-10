@@ -2,7 +2,6 @@ use crate::engine::camera::{Camera, Projection};
 use crate::game_object::GameObjectID;
 use cgmath::{Deg, Point3, Rad};
 use std::{collections::HashMap, ops::RangeInclusive, sync::Arc};
-use vulkano::command_buffer::DrawIndirectCommand;
 use vulkano::device::DeviceFeatures;
 use vulkano::{
     Validated, VulkanError, VulkanLibrary,
@@ -177,7 +176,7 @@ impl Renderer {
                 .get(&mesh)
                 .unwrap()
                 .iter()
-                .map(|o| {
+                .flat_map(|o| {
                     self.instances
                         .get(o)
                         .unwrap()
@@ -185,7 +184,6 @@ impl Renderer {
                         .map(|i| i.instance)
                         .clone()
                 })
-                .flatten()
                 .collect();
 
             //erstelle meshBufferMapping
@@ -313,8 +311,8 @@ impl Renderer {
             .entry(object_id)
             .or_default()
             .push(GPUInstance {
-                instance: instance,
-                instance_id: instance_id,
+                instance,
+                instance_id,
             });
         self.recreate_buffers();
     }
@@ -633,7 +631,7 @@ impl Renderer {
                 data.camera_uniform_descriptor_set.clone(), // Hier kommt das Set rein
             )
             .unwrap();
-        let command_count = self.indirect_buffer.len() as u64;
+        let command_count = self.indirect_buffer.len();
 
         if command_count > 0 {
             let buffer_slice = self.indirect_buffer.clone().slice(0..command_count);
@@ -843,8 +841,8 @@ impl Renderer {
             camera_uniform_descriptor_set,
             depth_image,
             depth_view,
-            msaa_image: msaa_image,
-            msaa_view: msaa_view,
+            msaa_image,
+            msaa_view,
         })
     }
 
@@ -853,7 +851,8 @@ impl Renderer {
         let mut e = [1; 3];
         e[0] = extend[0];
         e[1] = extend[1];
-        let msaa_image = Image::new(
+        
+        Image::new(
             self.memory_allocator.clone(),
             ImageCreateInfo {
                 usage: ImageUsage::TRANSIENT_ATTACHMENT | ImageUsage::COLOR_ATTACHMENT,
@@ -866,8 +865,7 @@ impl Renderer {
                 ..Default::default()
             },
         )
-        .unwrap();
-        msaa_image
+        .unwrap()
     }
 
     fn create_depth_buffer(&mut self, swapchain: &Arc<Swapchain>) -> Arc<Image> {
