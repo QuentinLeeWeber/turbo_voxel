@@ -1,3 +1,4 @@
+mod test;
 use crate::{
     engine::GameObjectTrait,
     hit_box::{BoundingBox, HitBox},
