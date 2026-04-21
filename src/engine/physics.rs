@@ -5,16 +5,20 @@ use crate::{
 use std::collections::HashMap;
 
 pub struct CoordinateBorders {
-    lower: f32,
-    upper: f32,
+    pub lower: f32,
+    pub upper: f32,
 }
 
 impl CoordinateBorders {
     pub fn get_middle(&self) -> f32 {
         (self.upper + self.lower) / 2.
     }
-    pub fn new(lower: f32, upper: f32) -> Self {
-        Self { lower, upper }
+    pub fn new(a: f32, b: f32) -> Self {
+        if a < b {
+            Self { lower: a, upper: b }
+        } else {
+            Self { lower: b, upper: a }
+        }
     }
     pub fn from_parent(parent: &CoordinateBorders, lower_half: bool) -> Self {
         if lower_half {
