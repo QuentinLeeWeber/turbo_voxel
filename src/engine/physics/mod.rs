@@ -98,13 +98,6 @@ impl Octree {
     }
 }
 
-struct OctreeNode {
-    index: u64,
-    x: CoordinateBorders,
-    y: CoordinateBorders,
-    z: CoordinateBorders,
-}
-
 #[derive(PartialEq, Eq)]
 enum PosInParent {
     X0Y0Z0,
@@ -174,6 +167,13 @@ impl PosInParent {
             PosInParent::X1Y1Z1 => parent_idx * 8 + 8,
         }
     }
+}
+
+struct OctreeNode {
+    index: u64,
+    x: CoordinateBorders,
+    y: CoordinateBorders,
+    z: CoordinateBorders,
 }
 
 impl OctreeNode {
