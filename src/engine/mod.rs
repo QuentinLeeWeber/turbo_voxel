@@ -15,6 +15,7 @@ use winit::{
 pub mod camera;
 pub mod marching_cubes;
 mod marching_cubes_data;
+mod perlin_noise;
 pub mod physics;
 pub mod renderer;
 mod scene;
