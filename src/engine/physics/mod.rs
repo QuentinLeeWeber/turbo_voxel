@@ -1,3 +1,4 @@
+mod collision_detection;
 mod octree;
 mod test;
 use crate::{
@@ -114,8 +115,4 @@ pub fn calculate_collisions(entities: &mut HashMap<u32, Box<dyn GameObjectTrait>
         }
         prev_node = node;
     }
-}
-
-fn check_collision(_obj_1: &HitBox, _obj_2: &HitBox) -> bool {
-    true
 }
