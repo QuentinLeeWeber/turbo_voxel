@@ -12,4 +12,19 @@ mod octree_node {
         assert_eq!(OctreeNode::get_idx_parent(0), None);
         assert!(OctreeNode::get_idx_children(u64::MAX).len() == 0);
     }
+    #[test]
+    fn pos_in_parent_mapping() {
+        for i in 0..10000 {
+            let children = OctreeNode::get_idx_children(i);
+            assert_eq!(children.len(), 8);
+            assert_eq!(
+                OctreeNode::get_idx_pos_in_parent(children[0]).unwrap(),
+                PosInParent::X0Y0Z0
+            );
+            assert_eq!(
+                OctreeNode::get_idx_pos_in_parent(children[1]).unwrap(),
+                PosInParent::X0Y0Z0
+            );
+        }
+    }
 }

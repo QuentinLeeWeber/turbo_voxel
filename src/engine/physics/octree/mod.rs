@@ -61,7 +61,7 @@ impl Octree {
     }
 }
 
-#[derive(PartialEq, Eq)]
+#[derive(PartialEq, Eq, Debug)]
 enum PosInParent {
     X0Y0Z0,
     X1Y0Z0,
