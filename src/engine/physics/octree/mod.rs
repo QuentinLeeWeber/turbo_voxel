@@ -203,7 +203,7 @@ impl OctreeNode {
 
     pub fn get_idx_children(idx: u64) -> Vec<u64> {
         if OctreeNode::has_children(idx) {
-            (idx * 8 + 1..idx * 8 + 8).collect()
+            (idx * 8 + 1..=idx * 8 + 8).collect()
         } else {
             vec![]
         }
