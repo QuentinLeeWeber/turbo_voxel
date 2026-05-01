@@ -42,7 +42,3 @@ mod coordinate_borders {
         assert!(cord_bord.is_within(&containing_bord));
     }
 }
-#[cfg(test)]
-mod octree_node {
-    use crate::engine::physics::*;
-}

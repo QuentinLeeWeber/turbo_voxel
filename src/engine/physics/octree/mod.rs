@@ -1,3 +1,4 @@
+mod test;
 use super::{BoundingBox, CoordinateBorders};
 use std::collections::HashMap;
 
