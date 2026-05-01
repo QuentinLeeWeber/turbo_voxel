@@ -23,7 +23,7 @@ mod octree_node {
             );
             assert_eq!(
                 OctreeNode::get_idx_pos_in_parent(children[1]).unwrap(),
-                PosInParent::X0Y0Z0
+                PosInParent::X1Y0Z0
             );
         }
     }
