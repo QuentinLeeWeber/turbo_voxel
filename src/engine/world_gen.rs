@@ -1,6 +1,5 @@
-use super::{CHUNK_WIDTH, Chunk, Material, perlin_noise::PerlinNoise};
+use super::{Chunk, Material, perlin_noise::PerlinNoise};
 use crate::engine::perlin_noise::PerlinNoiseParams;
-use std::alloc;
 
 const PERLIN_SEED: u32 = 123456789;
 
@@ -9,8 +8,8 @@ pub fn generate_chunk(x: i32, y: i32, z: i32) -> Chunk {
 
     let mut chunk = Chunk {
         pos: [x, y, z],
-        materials: alloc_materials(),
-        amount: alloc_amount(),
+        materials: Chunk::alloc_materials(),
+        amount: Chunk::alloc_amount(),
     };
 
     let sea_level = 8.0;
@@ -23,14 +22,14 @@ pub fn generate_chunk(x: i32, y: i32, z: i32) -> Chunk {
         octaves: 5,
         frequency_gain: 0.5,
         amplitude_gain: 0.5,
-        chunk_width: CHUNK_WIDTH as u32,
+        chunk_width: Chunk::WIDTH as u32,
     });
 
-    for xi in 0..CHUNK_WIDTH {
-        for yi in 0..CHUNK_WIDTH {
+    for xi in 0..Chunk::WIDTH {
+        for yi in 0..Chunk::WIDTH {
             terrain[xi][yi] += sea_level;
 
-            for zi in 0..CHUNK_WIDTH {
+            for zi in 0..Chunk::WIDTH {
                 let diff = zi as f32 - terrain[xi][yi];
                 if diff > 1.0 {
                     chunk.materials[xi][yi][zi] = Material::default();
@@ -97,24 +96,6 @@ fn ridged_noise(params: RigedNoiseParams) -> Vec<Vec<f32>> {
     }
 
     map
-}
-
-fn alloc_amount() -> Box<[[[f32; CHUNK_WIDTH]; CHUNK_WIDTH]; CHUNK_WIDTH]> {
-    unsafe {
-        let layout = alloc::Layout::new::<[[[f32; CHUNK_WIDTH]; CHUNK_WIDTH]; CHUNK_WIDTH]>();
-        let ptr =
-            alloc::alloc_zeroed(layout) as *mut [[[f32; CHUNK_WIDTH]; CHUNK_WIDTH]; CHUNK_WIDTH];
-        Box::from_raw(ptr)
-    }
-}
-
-fn alloc_materials() -> Box<[[[Material; CHUNK_WIDTH]; CHUNK_WIDTH]; CHUNK_WIDTH]> {
-    unsafe {
-        let layout = alloc::Layout::new::<[[[Material; CHUNK_WIDTH]; CHUNK_WIDTH]; CHUNK_WIDTH]>();
-        let ptr = alloc::alloc_zeroed(layout)
-            as *mut [[[Material; CHUNK_WIDTH]; CHUNK_WIDTH]; CHUNK_WIDTH];
-        Box::from_raw(ptr)
-    }
 }
 
 #[cfg(test)]

@@ -1,9 +1,14 @@
 use crate::{
-    engine::camera::{Camera, CameraController, Projection},
+    engine::{
+        camera::{Camera, CameraController, Projection},
+        chunk_loader::{ChunkLoader, ChunkLoaderSettings},
+        renderer::Renderer,
+    },
     game_object::{EndOfLife, GameObjectID, GameObjectTrait},
 };
+use bincode_next::{Decode, Encode};
 use cgmath::{Deg, Point3, Rad};
-use std::{collections::HashMap, sync::Arc};
+use std::{alloc, collections::HashMap, num::NonZero, sync::Arc};
 use winit::{
     application::ApplicationHandler,
     event::{DeviceEvent, ElementState, WindowEvent},
@@ -13,33 +18,65 @@ use winit::{
 };
 
 pub mod camera;
+mod chunk_loader;
 pub mod marching_cubes;
 mod marching_cubes_data;
 mod perlin_noise;
 pub mod physics;
 pub mod renderer;
 mod scene;
+mod thread_pool;
 pub mod world_gen;
 
-use renderer::Renderer;
-
-pub const CHUNK_WIDTH: usize = 256;
-
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug, Default, Encode, Decode, PartialEq, Eq)]
 pub enum Material {
     #[default]
-    STONE,
-    DIRT,
-    GRASS,
-    SNOW,
-    SAND,
+    Stone,
+    Dirt,
+    Grass,
+    Snow,
+    Sand,
 }
 
 #[derive(Debug)]
 pub struct Chunk {
     pub pos: [i32; 3],
-    pub materials: Box<[[[Material; CHUNK_WIDTH]; CHUNK_WIDTH]; CHUNK_WIDTH]>,
-    pub amount: Box<[[[f32; CHUNK_WIDTH]; CHUNK_WIDTH]; CHUNK_WIDTH]>,
+    pub materials: Box<[[[Material; Self::WIDTH]; Self::WIDTH]; Self::WIDTH]>,
+    pub amount: Box<[[[f32; Self::WIDTH]; Self::WIDTH]; Self::WIDTH]>,
+}
+
+impl Chunk {
+    pub fn alloc_amount() -> Box<[[[f32; Self::WIDTH]; Self::WIDTH]; Self::WIDTH]> {
+        unsafe {
+            let layout = alloc::Layout::new::<[[[f32; Self::WIDTH]; Self::WIDTH]; Self::WIDTH]>();
+            let ptr = alloc::alloc_zeroed(layout)
+                as *mut [[[f32; Self::WIDTH]; Self::WIDTH]; Self::WIDTH];
+            Box::from_raw(ptr)
+        }
+    }
+
+    pub fn alloc_materials() -> Box<[[[Material; Self::WIDTH]; Self::WIDTH]; Self::WIDTH]> {
+        unsafe {
+            let layout =
+                alloc::Layout::new::<[[[Material; Self::WIDTH]; Self::WIDTH]; Self::WIDTH]>();
+            let ptr = alloc::alloc_zeroed(layout)
+                as *mut [[[Material; Self::WIDTH]; Self::WIDTH]; Self::WIDTH];
+            Box::from_raw(ptr)
+        }
+    }
+
+    #[cfg(test)]
+    pub fn stone_block(x: usize, y: usize, z: usize) -> Self {
+        Self {
+            pos: [x as i32, y as i32, z as i32],
+            materials: Self::alloc_materials(),
+            amount: Self::alloc_amount(),
+        }
+    }
+}
+
+impl Chunk {
+    pub const WIDTH: usize = 128;
 }
 
 enum Event {
@@ -52,6 +89,7 @@ pub struct Engine {
     pub game_object_id_count: u32,
     pub renderer: Renderer,
     scene: HashMap<GameObjectID, Box<dyn GameObjectTrait>>,
+    chunk_loader: ChunkLoader,
 }
 
 impl Engine {
@@ -67,6 +105,13 @@ impl Engine {
                 Projection::new(10, 10, Rad::from(Deg(90.0)), 0.1, 1000.0),
             ),
             camera_controller: CameraController::new(10.0, 1.0),
+            chunk_loader: ChunkLoader::new(ChunkLoaderSettings {
+                view_distance: 3,
+                thread_count: std::thread::available_parallelism()
+                    .unwrap_or(NonZero::new(4).unwrap()),
+                db_path: "world.db".into(),
+                world_height: 3,
+            }),
         }
     }
 

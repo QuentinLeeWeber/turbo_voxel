@@ -1,6 +1,7 @@
 mod engine;
 mod game_object;
 mod hit_box;
+mod prelude;
 
 use crate::{engine::marching_cubes, game_object::Transform};
 use cgmath::{Deg, Quaternion, Rad, Rotation3};
@@ -74,7 +75,9 @@ fn main() {
         voxels.insert_chunk(chunk);
     }
 
+    println!("pre mesh");
     let mesh = voxels.get_chunk_mesh([0, 0, 0]);
+    println!("post mesh");
 
     struct ObjectData {}
     game_object::GameObjectBuilder::<ObjectData>::new(ObjectData {})

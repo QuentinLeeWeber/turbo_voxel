@@ -1,11 +1,6 @@
-use std::{
-    collections::HashMap,
-    vec::Vec,
-};
-
-use crate::engine::renderer::prelude::VertexData;
-
-use super::{CHUNK_WIDTH, Chunk, Material, marching_cubes_data::*};
+use super::{Chunk, Material, marching_cubes_data::*};
+use crate::engine::renderer::prelude::{MeshData, VertexData};
+use std::{collections::HashMap, vec::Vec};
 
 pub struct Voxels {
     pub chunks: HashMap<[i32; 3], Chunk>,
@@ -60,36 +55,38 @@ impl Chunk {
     pub fn new(pos: [i32; 3]) -> Self {
         Self {
             pos,
-            amount: Box::new([[[0.0; CHUNK_WIDTH]; CHUNK_WIDTH]; CHUNK_WIDTH]),
-            materials: Box::new([[[Material::default(); CHUNK_WIDTH]; CHUNK_WIDTH]; CHUNK_WIDTH]),
+            amount: Box::new([[[0.0; Chunk::WIDTH]; Chunk::WIDTH]; Chunk::WIDTH]),
+            materials: Box::new(
+                [[[Material::default(); Chunk::WIDTH]; Chunk::WIDTH]; Chunk::WIDTH],
+            ),
         }
     }
 
     pub fn get_voxel(&self, voxels: &Voxels, x: usize, y: usize, z: usize) -> f32 {
         // Fast path: coordinates are within this chunk
-        if x < CHUNK_WIDTH && y < CHUNK_WIDTH && z < CHUNK_WIDTH {
+        if x < Self::WIDTH && y < Self::WIDTH && z < Self::WIDTH {
             return self.amount[x][y][z];
         }
 
         // Compute which chunk the coordinates fall into
-        let chunk_x = (x / CHUNK_WIDTH) as i32 + self.pos[0];
-        let chunk_y = (y / CHUNK_WIDTH) as i32 + self.pos[1];
-        let chunk_z = (z / CHUNK_WIDTH) as i32 + self.pos[2];
+        let chunk_x = (x / Self::WIDTH) as i32 + self.pos[0];
+        let chunk_y = (y / Self::WIDTH) as i32 + self.pos[1];
+        let chunk_z = (z / Self::WIDTH) as i32 + self.pos[2];
 
         let idx = [chunk_x, chunk_y, chunk_z];
 
         if let Some(chunk) = voxels.chunks.get(&idx) {
             // Access directly without recursion to avoid stack overflow
-            let lx = x % CHUNK_WIDTH;
-            let ly = y % CHUNK_WIDTH;
-            let lz = z % CHUNK_WIDTH;
+            let lx = x % Self::WIDTH;
+            let ly = y % Self::WIDTH;
+            let lz = z % Self::WIDTH;
             return chunk.amount[lx][ly][lz];
         }
 
-        // Neighbour chunk doesn't exist – clamp to this chunk's border
-        let cx = x.min(CHUNK_WIDTH - 1);
-        let cy = y.min(CHUNK_WIDTH - 1);
-        let cz = z.min(CHUNK_WIDTH - 1);
+        // Neighbor chunk doesn't exist – clamp to this chunk's border
+        let cx = x.min(Self::WIDTH - 1);
+        let cy = y.min(Self::WIDTH - 1);
+        let cz = z.min(Self::WIDTH - 1);
         self.amount[cx][cy][cz]
     }
 
@@ -155,9 +152,9 @@ impl Chunk {
     pub fn get_mesh(&self, voxels: &Voxels) -> Mesh {
         let mut mesh = Mesh::new();
 
-        for z in 0..CHUNK_WIDTH {
-            for y in 0..CHUNK_WIDTH {
-                for x in 0..CHUNK_WIDTH {
+        for z in 0..Chunk::WIDTH {
+            for y in 0..Chunk::WIDTH {
+                for x in 0..Chunk::WIDTH {
                     let idx = self.get_table_idx(voxels, x, y, z);
                     let case = &TRIANGLE_TABLE[idx as usize];
 
@@ -186,9 +183,9 @@ impl Chunk {
                         self.add_face(
                             &mut mesh,
                             [
-                                ((x as i32) + self.pos[0] * (CHUNK_WIDTH as i32)) as f32,
-                                ((y as i32) + self.pos[1] * (CHUNK_WIDTH as i32)) as f32,
-                                ((z as i32) + self.pos[2] * (CHUNK_WIDTH as i32)) as f32,
+                                ((x as i32) + self.pos[0] * (Chunk::WIDTH as i32)) as f32,
+                                ((y as i32) + self.pos[1] * (Chunk::WIDTH as i32)) as f32,
+                                ((z as i32) + self.pos[2] * (Chunk::WIDTH as i32)) as f32,
                             ],
                             points,
                             hashes,
@@ -305,9 +302,9 @@ pub fn smooth_mesh_laplacian(mesh: &mut Mesh, iterations: usize) {
 
 pub fn edge_idx_to_point_hash(idx: i8, pos: [i32; 3], offset: [usize; 3]) -> [isize; 4] {
     let mut hash = EDGE_HASHMAP_DATA[idx as usize];
-    hash[0] += (pos[0] as isize) * (CHUNK_WIDTH as isize) + (offset[0] as isize);
-    hash[1] += (pos[1] as isize) * (CHUNK_WIDTH as isize) + (offset[1] as isize);
-    hash[2] += (pos[2] as isize) * (CHUNK_WIDTH as isize) + (offset[2] as isize);
+    hash[0] += (pos[0] as isize) * (Chunk::WIDTH as isize) + (offset[0] as isize);
+    hash[1] += (pos[1] as isize) * (Chunk::WIDTH as isize) + (offset[1] as isize);
+    hash[2] += (pos[2] as isize) * (Chunk::WIDTH as isize) + (offset[2] as isize);
 
     hash
 }
@@ -335,7 +332,6 @@ pub fn edge_idx_to_point_coord(
         p2[2] as usize + pos[2],
     );
 
-    // Corrected lerp: t is the fraction along p1->p2 where the isosurface crosses zero.
     let t = val1 / (val1 - val2);
 
     [
@@ -394,9 +390,9 @@ impl Mesh {
     }
 }
 
-impl From<Mesh> for crate::engine::renderer::prelude::MeshData {
+impl From<Mesh> for MeshData {
     fn from(val: Mesh) -> Self {
-        let vertices: Vec<crate::engine::renderer::prelude::VertexData> = val
+        let vertices: Vec<VertexData> = val
             .vertices
             .into_iter()
             .map(|v| VertexData::new(v.pos, v.normal))
@@ -409,7 +405,7 @@ impl From<Mesh> for crate::engine::renderer::prelude::MeshData {
             .flat_map(|(a, b, c)| [a, b, c])
             .collect();
 
-        crate::engine::renderer::prelude::MeshData {
+        MeshData {
             vertices,
             indices,
             material_id: 0,

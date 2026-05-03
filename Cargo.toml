@@ -4,8 +4,12 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+anyhow = "1.0.102"
+bincode-next = "2.1.0"
 cgmath = "0.18.0"
+crossbeam = { version = "0.8.4", features = ["crossbeam-channel"] }
 rayon = "1.11.0"
+rusqlite = "0.39.0"
 vulkano = "0.35.2"
 vulkano-shaders = "0.35.0"
 winit = "0.30.13"
