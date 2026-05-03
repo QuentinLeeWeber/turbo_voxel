@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod coordinate_borders {
-    use crate::engine::physics::*;
+    use super::super::*;
     fn within_tol(a: f32, b: f32, atol: f32) -> bool {
         return a - atol < b && a + atol > b;
     }

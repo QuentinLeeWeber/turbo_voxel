@@ -28,3 +28,29 @@ mod octree_node {
         }
     }
 }
+#[cfg(test)]
+mod pos_in_parent {
+    use super::super::*;
+    #[test]
+    fn u32_positions_as_expected() {
+        /*
+         * Expected division:
+         * X -> left(0) to right(1),
+         * Y -> bottom(0) to top(1),
+         * Z -> front(0) to back(0)
+         * front layer:
+         * ________
+         * | 2 | 3 |
+         * |___|___|
+         * | 0 | 1 |
+         * |___|___|
+         *
+         * back layer:
+         * ________
+         * | 6 | 7 |
+         * |___|___|
+         * | 4 | 5 |
+         * |___|___|
+         */
+    }
+}
