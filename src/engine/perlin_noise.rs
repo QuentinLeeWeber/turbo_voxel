@@ -141,7 +141,7 @@ mod tests {
     }
 
     #[test]
-    fn test_chunk_boundary_continuity() {
+    fn test_chunk_boundary_continuity_1() {
         let seed = 42;
         let gradient_spacing = 16;
         let chunk_width = 64;

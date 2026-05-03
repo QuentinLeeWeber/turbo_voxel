@@ -17,12 +17,13 @@ pub fn generate_chunk(x: i32, y: i32, z: i32) -> Chunk {
     let mut terrain = ridged_noise(RigedNoiseParams {
         chunk_x: x,
         chunk_y: y,
-        amplitude: 40.,
+        amplitude: 20.,
         gradient_spacing: 100,
         seed: PERLIN_SEED,
-        octaves: 2,
-        lacunarity: 0.5,
-        amplitude_gain: 1.,
+        octaves: 5,
+        frequency_gain: 0.5,
+        amplitude_gain: 0.5,
+        chunk_width: CHUNK_WIDTH as u32,
     });
 
     for xi in 0..CHUNK_WIDTH {
@@ -55,8 +56,9 @@ pub struct RigedNoiseParams {
     pub gradient_spacing: u32,
     pub seed: u32,
     pub octaves: u32,
-    pub lacunarity: f32,
+    pub frequency_gain: f32,
     pub amplitude_gain: f32,
+    pub chunk_width: u32,
 }
 
 fn gen_2d_range(
@@ -68,43 +70,30 @@ fn gen_2d_range(
     (from1..to1).flat_map(move |a| (from2..to2).map(move |b| (a, b)))
 }
 
-fn ridged_noise(params: RigedNoiseParams) -> Box<[[f32; CHUNK_WIDTH]; CHUNK_WIDTH]> {
-    let mut map = unsafe {
-        let layout = alloc::Layout::new::<[[f32; CHUNK_WIDTH]; CHUNK_WIDTH]>();
-        let ptr = alloc::alloc_zeroed(layout) as *mut [[f32; CHUNK_WIDTH]; CHUNK_WIDTH];
-        Box::from_raw(ptr)
-    };
+fn ridged_noise(params: RigedNoiseParams) -> Vec<Vec<f32>> {
+    let mut map = vec![vec![0.0; params.chunk_width as usize]; params.chunk_width as usize];
 
-    let perlin_noise = PerlinNoise::new(PerlinNoiseParams {
-        seed: params.seed,
-        chunk_x: params.chunk_x,
-        chunk_y: params.chunk_y,
-        gradient_spacing: params.gradient_spacing,
-        chunk_width: CHUNK_WIDTH as u32,
-    });
+    let mut amplitude = params.amplitude;
+    let mut frequency = 1.0;
 
-    for x in 0..CHUNK_WIDTH {
-        for y in 0..CHUNK_WIDTH {
-            let mut amplitude = params.amplitude;
-            let mut frequency = 1.0;
-            let mut noise_sum = 0.0;
-            let mut weight = 1.0;
+    for _ in 0..params.octaves {
+        let perlin_noise = PerlinNoise::new(PerlinNoiseParams {
+            seed: params.seed,
+            chunk_x: params.chunk_x,
+            chunk_y: params.chunk_y,
+            gradient_spacing: (params.gradient_spacing as f32 * frequency).round() as u32,
+            chunk_width: params.chunk_width,
+        });
 
-            for _ in 0..params.octaves {
-                let mut signal = perlin_noise
-                    .noise((x as f32 * frequency) as i32, (y as f32 * frequency) as i32);
-                signal = 1.0 - signal.abs();
-
-                signal *= weight;
-                weight = signal.clamp(0.0, 1.0);
-
-                noise_sum += signal * amplitude;
-                amplitude *= params.amplitude_gain;
-                frequency *= params.lacunarity;
+        for x in 0..params.chunk_width {
+            for y in 0..params.chunk_width {
+                let signal = perlin_noise.noise(x as i32, y as i32);
+                map[x as usize][y as usize] += signal * amplitude;
             }
-
-            map[x][y] = noise_sum;
         }
+
+        amplitude *= params.amplitude_gain;
+        frequency *= params.frequency_gain;
     }
 
     map
@@ -134,17 +123,19 @@ mod tests {
 
     #[test]
     fn test_ridged_noise_continuity() {
-        let eps = 1.0;
+        let eps = 1.;
+        let chunk_width: usize = 64;
 
         let new_chunk = |cx, cy| {
             ridged_noise(RigedNoiseParams {
                 chunk_x: cx,
                 chunk_y: cy,
-                amplitude: 40.,
-                gradient_spacing: 100,
-                seed: 123,
+                amplitude: 1.,
+                gradient_spacing: 16,
+                chunk_width: chunk_width as u32,
+                seed: 42,
                 octaves: 1,
-                lacunarity: 0.5,
+                frequency_gain: 0.5,
                 amplitude_gain: 1.,
             })
         };
@@ -153,12 +144,106 @@ mod tests {
         let chunk10 = new_chunk(1, 0);
         let chunk01 = new_chunk(0, 1);
 
-        for y in 0..CHUNK_WIDTH {
-            assert!((chunk00[CHUNK_WIDTH - 1][y] - chunk10[0][y]).abs() < eps);
+        for y in 0..chunk_width {
+            assert!((chunk00[chunk_width - 1][y] - chunk10[0][y]).abs() < eps);
         }
 
-        for x in 0..CHUNK_WIDTH {
-            assert!((chunk00[x][CHUNK_WIDTH - 1] - chunk01[x][0]).abs() < eps);
+        for x in 0..chunk_width {
+            assert!((chunk00[x][chunk_width - 1] - chunk01[x][0]).abs() < eps);
+        }
+    }
+
+    #[test]
+    fn test_ridged_noise_continuity_multiple_octaves() {
+        let eps = 1.;
+        let chunk_width: usize = 64;
+
+        let new_chunk = |cx, cy| {
+            ridged_noise(RigedNoiseParams {
+                chunk_x: cx,
+                chunk_y: cy,
+                amplitude: 1.,
+                gradient_spacing: 16,
+                chunk_width: chunk_width as u32,
+                seed: 42,
+                octaves: 3,
+                frequency_gain: 0.5,
+                amplitude_gain: 1.,
+            })
+        };
+
+        let chunk00 = new_chunk(0, 0);
+        let chunk10 = new_chunk(1, 0);
+        let chunk01 = new_chunk(0, 1);
+
+        for y in 0..chunk_width {
+            assert!((chunk00[chunk_width - 1][y] - chunk10[0][y]).abs() < eps);
+        }
+
+        for x in 0..chunk_width {
+            assert!((chunk00[x][chunk_width - 1] - chunk01[x][0]).abs() < eps);
+        }
+    }
+
+    #[test]
+    fn test_ridged_noise_vs_perlin_noise_1() {
+        let eps = 1e-5;
+
+        let ridged_chunk = ridged_noise(RigedNoiseParams {
+            chunk_x: 0,
+            chunk_y: 0,
+            amplitude: 1.,
+            gradient_spacing: 16,
+            seed: 42,
+            octaves: 1,
+            frequency_gain: 0.5,
+            amplitude_gain: 1.,
+            chunk_width: 64,
+        });
+
+        let perlin_chunk = PerlinNoise::new(PerlinNoiseParams {
+            seed: 42,
+            chunk_x: 0,
+            chunk_y: 0,
+            gradient_spacing: 16,
+            chunk_width: 64,
+        });
+
+        for y in 0..64 {
+            for x in 0..64 {
+                assert!((ridged_chunk[x][y] - perlin_chunk.noise(x as i32, y as i32)).abs() < eps);
+            }
+        }
+    }
+
+    #[test]
+    fn test_ridged_noise_vs_perlin_noise_2() {
+        let eps = 1e-5;
+
+        let ridged_chunk = ridged_noise(RigedNoiseParams {
+            chunk_x: 42,
+            chunk_y: 42,
+            amplitude: 1.,
+            gradient_spacing: 16,
+            seed: 123,
+            octaves: 1,
+            frequency_gain: 0.5,
+            amplitude_gain: 1.,
+            chunk_width: 64,
+        });
+
+        let perlin_chunk = PerlinNoise::new(PerlinNoiseParams {
+            seed: 123,
+            chunk_x: 42,
+            chunk_y: 42,
+            gradient_spacing: 16,
+            chunk_width: 64,
+        });
+
+        for y in 0..64 {
+            for x in 0..64 {
+                assert!((ridged_chunk[x][y] - perlin_chunk.noise(x as i32, y as i32)).abs() < eps);
+            }
         }
     }
 }
