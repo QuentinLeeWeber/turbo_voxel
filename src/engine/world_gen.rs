@@ -1,25 +1,9 @@
-const PERLIN_SEED: u32 = 123456789;
+use crate::engine::perlin_noise::PerlinNoiseParams;
 
 use super::{CHUNK_WIDTH, Chunk, Material, perlin_noise::PerlinNoise};
+use std::alloc;
 
-fn alloc_amount() -> Box<[[[f32; CHUNK_WIDTH]; CHUNK_WIDTH]; CHUNK_WIDTH]> {
-    unsafe {
-        let layout = std::alloc::Layout::new::<[[[f32; CHUNK_WIDTH]; CHUNK_WIDTH]; CHUNK_WIDTH]>();
-        let ptr = std::alloc::alloc_zeroed(layout)
-            as *mut [[[f32; CHUNK_WIDTH]; CHUNK_WIDTH]; CHUNK_WIDTH];
-        Box::from_raw(ptr)
-    }
-}
-
-fn alloc_materials() -> Box<[[[Material; CHUNK_WIDTH]; CHUNK_WIDTH]; CHUNK_WIDTH]> {
-    unsafe {
-        let layout =
-            std::alloc::Layout::new::<[[[Material; CHUNK_WIDTH]; CHUNK_WIDTH]; CHUNK_WIDTH]>();
-        let ptr = std::alloc::alloc_zeroed(layout)
-            as *mut [[[Material; CHUNK_WIDTH]; CHUNK_WIDTH]; CHUNK_WIDTH];
-        Box::from_raw(ptr)
-    }
-}
+const PERLIN_SEED: u32 = 123456789;
 
 pub fn generate_chunk(x: i32, y: i32, z: i32) -> Chunk {
     println!("generate chunks");
@@ -31,7 +15,7 @@ pub fn generate_chunk(x: i32, y: i32, z: i32) -> Chunk {
     };
 
     let sea_level = 8.0;
-    let mut terrain = ridged_noise(x, y, NoiseParams::default());
+    let mut terrain = ridged_noise(x, y, RigedNoiseParams::default());
 
     for xi in 0..CHUNK_WIDTH {
         for yi in 0..CHUNK_WIDTH {
@@ -56,12 +40,12 @@ pub fn generate_chunk(x: i32, y: i32, z: i32) -> Chunk {
     chunk
 }
 
-pub struct NoiseParams {
+pub struct RigedNoiseParams {
     pub amplitude: f32,
-    pub gradient_spacing: i32,
+    pub gradient_spacing: u32,
 }
 
-impl Default for NoiseParams {
+impl Default for RigedNoiseParams {
     fn default() -> Self {
         Self {
             amplitude: 40.0,
@@ -82,25 +66,25 @@ fn gen_2d_range(
 fn ridged_noise(
     offset_x: i32,
     offset_y: i32,
-    params: NoiseParams,
+    params: RigedNoiseParams,
 ) -> Box<[[f32; CHUNK_WIDTH]; CHUNK_WIDTH]> {
     let octaves = 2;
     let lacunarity = 0.5;
     let gain = 1.0;
 
     let mut map = unsafe {
-        let layout = std::alloc::Layout::new::<[[f32; CHUNK_WIDTH]; CHUNK_WIDTH]>();
-        let ptr = std::alloc::alloc_zeroed(layout) as *mut [[f32; CHUNK_WIDTH]; CHUNK_WIDTH];
+        let layout = alloc::Layout::new::<[[f32; CHUNK_WIDTH]; CHUNK_WIDTH]>();
+        let ptr = alloc::alloc_zeroed(layout) as *mut [[f32; CHUNK_WIDTH]; CHUNK_WIDTH];
         Box::from_raw(ptr)
     };
 
-    let perlin_noise = PerlinNoise::new(
-        PERLIN_SEED,
+    let perlin_noise = PerlinNoise::new(PerlinNoiseParams {
+        seed: PERLIN_SEED,
         offset_x,
         offset_y,
-        params.gradient_spacing,
-        CHUNK_WIDTH as i32,
-    );
+        gradient_spacing: params.gradient_spacing,
+        chunk_width: CHUNK_WIDTH as u32,
+    });
 
     for x in 0..CHUNK_WIDTH {
         for y in 0..CHUNK_WIDTH {
@@ -127,4 +111,22 @@ fn ridged_noise(
     }
 
     map
+}
+
+fn alloc_amount() -> Box<[[[f32; CHUNK_WIDTH]; CHUNK_WIDTH]; CHUNK_WIDTH]> {
+    unsafe {
+        let layout = alloc::Layout::new::<[[[f32; CHUNK_WIDTH]; CHUNK_WIDTH]; CHUNK_WIDTH]>();
+        let ptr =
+            alloc::alloc_zeroed(layout) as *mut [[[f32; CHUNK_WIDTH]; CHUNK_WIDTH]; CHUNK_WIDTH];
+        Box::from_raw(ptr)
+    }
+}
+
+fn alloc_materials() -> Box<[[[Material; CHUNK_WIDTH]; CHUNK_WIDTH]; CHUNK_WIDTH]> {
+    unsafe {
+        let layout = alloc::Layout::new::<[[[Material; CHUNK_WIDTH]; CHUNK_WIDTH]; CHUNK_WIDTH]>();
+        let ptr = alloc::alloc_zeroed(layout)
+            as *mut [[[Material; CHUNK_WIDTH]; CHUNK_WIDTH]; CHUNK_WIDTH];
+        Box::from_raw(ptr)
+    }
 }
