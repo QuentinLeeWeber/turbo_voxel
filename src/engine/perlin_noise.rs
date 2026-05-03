@@ -5,8 +5,8 @@ pub(crate) struct PerlinNoise {
 
 pub(crate) struct PerlinNoiseParams {
     pub seed: u32,
-    pub offset_x: i32,
-    pub offset_y: i32,
+    pub chunk_x: i32,
+    pub chunk_y: i32,
     pub gradient_spacing: u32,
     pub chunk_width: u32,
 }
@@ -21,8 +21,8 @@ impl PerlinNoise {
             for y in 0..grad_size {
                 let grid_cells = params.chunk_width as i32 / params.gradient_spacing as i32;
                 grads[x][y] = random_grad(
-                    x as i32 + params.offset_x * grid_cells,
-                    y as i32 + params.offset_y * grid_cells,
+                    x as i32 + params.chunk_x * grid_cells,
+                    y as i32 + params.chunk_y * grid_cells,
                     params.seed,
                 );
             }
@@ -151,8 +151,8 @@ mod tests {
         let new_noise = |ox, oy| {
             PerlinNoise::new(PerlinNoiseParams {
                 seed,
-                offset_x: ox,
-                offset_y: oy,
+                chunk_x: ox,
+                chunk_y: oy,
                 gradient_spacing,
                 chunk_width,
             })
@@ -197,8 +197,8 @@ mod tests {
         let new_noise = |ox, oy| {
             PerlinNoise::new(PerlinNoiseParams {
                 seed,
-                offset_x: ox,
-                offset_y: oy,
+                chunk_x: ox,
+                chunk_y: oy,
                 gradient_spacing,
                 chunk_width,
             })
