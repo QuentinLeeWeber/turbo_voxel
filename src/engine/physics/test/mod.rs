@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod coordinate_borders {
-    use crate::engine::physics::*;
+    use super::super::*;
     fn within_tol(a: f32, b: f32, atol: f32) -> bool {
         return a - atol < b && a + atol > b;
     }
@@ -43,6 +43,41 @@ mod coordinate_borders {
     }
 }
 #[cfg(test)]
+mod pos_in_parent {
+    use super::super::*;
+    #[test]
+    fn u32_positions_as_expected() {
+        /*
+         * Expected division:
+         * X -> left(0) to right(1),
+         * Y -> bottom(0) to top(1),
+         * Z -> front(0) to back(0)
+         * front layer:
+         * ________
+         * | 2 | 3 |
+         * |___|___|
+         * | 0 | 1 |
+         * |___|___|
+         *
+         * back layer:
+         * ________
+         * | 6 | 7 |
+         * |___|___|
+         * | 4 | 5 |
+         * |___|___|
+         */
+    }
+}
+
+#[cfg(test)]
 mod octree_node {
-    use crate::engine::physics::*;
+    use super::super::*;
+    #[test]
+    fn get_idx_tests() {
+        for i in 0..=10000 {
+            for j in OctreeNode::get_idx_children(i) {
+                assert_eq!(OctreeNode::get_idx_parent(j).unwrap(), i);
+            }
+        }
+    }
 }
