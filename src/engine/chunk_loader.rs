@@ -2,13 +2,16 @@ use crate::{
     engine::{
         Chunk, Material, Renderer,
         marching_cubes::{self, Mesh},
+        renderer::{ObjectDataID, prelude::InstanceData},
         thread_pool::ThreadPool,
         world_gen,
     },
+    game_object::{GameObjectID, GameObjectTrait},
     prelude::*,
 };
 use anyhow::Result;
 use bincode_next::config::{self};
+use cgmath::{Deg, Quaternion, Rad, Rotation3};
 use rusqlite::{Connection, params};
 use std::{
     alloc,
@@ -18,7 +21,8 @@ use std::{
 };
 
 pub struct ChunkLoader {
-    // TODO: generating chunks
+    meshes: HashMap<(i32, i32, i32), ObjectDataID>,
+    generating_chunks: HashSet<(i32, i32, i32)>,
     generated_chunks: HashSet<(i32, i32, i32)>,
     loaded_chunks: HashMap<(i32, i32, i32), Chunk>,
     settings: ChunkLoaderSettings,
@@ -32,13 +36,18 @@ pub struct ChunkLoaderSettings {
     pub thread_count: NonZero<usize>,
     pub db_path: String,
     pub world_height: i32,
+    pub gen_new_world: bool,
 }
 
 impl ChunkLoader {
     pub fn new(settings: ChunkLoaderSettings) -> Self {
+        if settings.gen_new_world {
+            println!("deleting old world at path: {}", settings.db_path);
+            std::fs::remove_file(format!("{}", settings.db_path)).ok();
+        }
+
         let db = Connection::open(&settings.db_path).expect("could not open database");
         Chunk::create_table(&db).expect("could not create chunk table");
-        create_generated_chunks_table(&db).expect("could not create generated chunks table");
 
         let mut generated_chunks = HashSet::new();
         while let Some(row) = db
@@ -57,6 +66,8 @@ impl ChunkLoader {
         }
 
         Self {
+            meshes: HashMap::new(),
+            generating_chunks: HashSet::new(),
             generated_chunks,
             loaded_chunks: HashMap::new(),
             db,
@@ -66,7 +77,13 @@ impl ChunkLoader {
         }
     }
 
-    pub fn update(&mut self, renderer: &mut Renderer, cam_x: i32, cam_y: i32) {
+    pub fn update(
+        &mut self,
+        renderer: &mut Renderer,
+        cam_x: i32,
+        cam_y: i32,
+        game_object_id_count: &mut u32,
+    ) {
         let view_dist = self.settings.view_distance;
 
         let div = |a: i32, b: i32| {
@@ -81,15 +98,19 @@ impl ChunkLoader {
         for x in (-view_dist..view_dist).map(|i| i + cam_chunk_x) {
             for y in (-view_dist..view_dist).map(|i| i + cam_chunk_y) {
                 for z in 0..self.settings.world_height {
-                    if !self.generated_chunks.contains(&(x, y, z)) {
+                    if !self.generated_chunks.contains(&(x, y, z))
+                        && !self.generating_chunks.contains(&(x, y, z))
+                    {
                         self.generate_chunk(x, y, z);
                         continue;
                     }
-                    if !self.loaded_chunks.contains_key(&(x, y, z)) {
-                        let chunk = Chunk::find(&self.db, x, y, z)
-                            .unwrap()
-                            .expect("could not load chunk, even though it is marked as generated");
-                        self.loaded_chunks.insert((x, y, z), chunk);
+                    if !self.loaded_chunks.contains_key(&(x, y, z))
+                        && self.generated_chunks.contains(&(x, y, z))
+                    {
+                        // let chunk = Chunk::find(&self.db, x, y, z)
+                        //     .unwrap()
+                        //     .expect("could not load chunk, even though it is marked as generated");
+                        // self.loaded_chunks.insert((x, y, z), chunk);
                     }
                 }
             }
@@ -105,26 +126,71 @@ impl ChunkLoader {
             })
             .into_iter()
             .for_each(|chunk| {
-                chunk.insert(&self.db).unwrap();
+                //chunk.insert(&self.db).unwrap();
             });
 
-        let task_count = self.generator.task_count();
-        if task_count > 0 {
-            println!("world gen task: {task_count}");
+        // Receive generated chunks from the thread pool,
+        // invoke the mesh builder
+        for result in self.generator.results().into_iter() {
+            let [x, y, z] = result.pos;
+            self.loaded_chunks.insert((x, y, z), result);
+            self.generated_chunks.insert((x, y, z));
+            self.generating_chunks.remove(&(x, y, z));
+
+            let mut voxels = marching_cubes::Voxels::new();
+            for (x, y, z) in [
+                (x, y, z),
+                (x + 1, y, z),
+                (x, y + 1, z),
+                (x, y, z + 1),
+                (x + 1, y + 1, z),
+                (x + 1, y, z + 1),
+                (x, y + 1, z + 1),
+                (x + 1, y + 1, z + 1),
+            ] {
+                if let Some(chunk) = self.get_chunk(x, y, z) {
+                    voxels.insert_chunk(chunk.clone());
+                }
+            }
+
+            self.mesh_builder
+                .add_task(move || voxels.get_chunk_mesh([x, y, z]));
         }
 
-        // Receive generated chunks from the thread pool
-        // And invoke the mesh builder
-        //
-        // for result in self.generator.results().into_iter() {
-        //     let [x, y, z] = result.pos;
-        //     self.loaded_chunks.insert((x, y, z), result);
-        //     self.mesh_builder.add_task(move || {
-        //         let mut voxels = marching_cubes::Voxels::new();
-        //         voxels.insert_chunk(result);
-        //         voxels.get_chunk_mesh([x, y, z])
-        //     });
-        // }
+        // Receive generated meshes
+        // and upload them to the GPU
+        for mesh in self.mesh_builder.results().into_iter() {
+            let (x, y, z) = mesh.pos.into();
+
+            let id = GameObjectID(*game_object_id_count);
+            *game_object_id_count += 1;
+
+            let instance = InstanceData::new(
+                [
+                    x as f32 * Chunk::WIDTH as f32,
+                    y as f32 * Chunk::WIDTH as f32,
+                    z as f32 * Chunk::WIDTH as f32,
+                ]
+                .into(),
+                Quaternion::from_angle_x(Rad::from(Deg(90.0))),
+            );
+
+            println!("upload mesh");
+            let object_data = renderer.instantiate_object(vec![mesh.into()], instance, id);
+            self.meshes.insert((x, y, z), object_data);
+        }
+
+        let generator_task_count = self.generator.task_count();
+        let mesh_builder_task_count = self.mesh_builder.task_count();
+        if generator_task_count > 0 || mesh_builder_task_count > 0 {
+            println!(
+                "world gen task: {generator_task_count} / mesh build tasks: {mesh_builder_task_count}"
+            );
+        }
+    }
+
+    pub fn get_chunk(&mut self, x: i32, y: i32, z: i32) -> Option<&mut Chunk> {
+        self.loaded_chunks.get_mut(&(x, y, z))
     }
 
     pub fn get_chunks(&mut self) -> Vec<&mut Chunk> {
@@ -134,6 +200,7 @@ impl ChunkLoader {
     fn generate_chunk(&mut self, x: i32, y: i32, z: i32) {
         self.generator
             .add_task(move || world_gen::generate_chunk(x, y, z));
+        self.generating_chunks.insert((x, y, z));
     }
 }
 
@@ -165,11 +232,6 @@ impl Chunk {
             params![self.pos[0], self.pos[1], self.pos[2], &materials, &amount],
         )?;
 
-        db.execute(
-            "INSERT OR REPLACE INTO genchunks (x, y, z) VALUES (?1, ?2, ?3)",
-            params![self.pos[0], self.pos[1], self.pos[2]],
-        )?;
-
         Ok(())
     }
 
@@ -197,21 +259,8 @@ impl Chunk {
     }
 }
 
-fn create_generated_chunks_table(db: &Connection) -> anyhow::Result<()> {
-    db.execute_batch(
-        "CREATE TABLE IF NOT EXISTS genchunks (
-            x INTEGER NOT NULL,
-            y INTEGER NOT NULL,
-            z INTEGER NOT NULL,
-            PRIMARY KEY (x, y, z)
-        );",
-    )?;
-
-    Ok(())
-}
-
 fn is_chunk_generated(db: &Connection, x: i32, y: i32, z: i32) -> anyhow::Result<bool> {
-    let mut query = db.prepare("SELECT 1 FROM genchunks WHERE x = ?1 AND y = ?2 AND z = ?3")?;
+    let mut query = db.prepare("SELECT 1 FROM chunks WHERE x = ?1 AND y = ?2 AND z = ?3")?;
     let mut rows = query.query(params![x, y, z])?;
 
     Ok(rows.next()?.is_some())
@@ -256,7 +305,6 @@ mod tests {
     fn setup_db() -> Result<Connection> {
         let conn = Connection::open_in_memory()?;
         Chunk::create_table(&conn)?;
-        create_generated_chunks_table(&conn)?;
         Ok(conn)
     }
 
@@ -264,11 +312,11 @@ mod tests {
     fn test_create_tables() -> Result<()> {
         let conn = setup_db()?;
         let count: i32 = conn.query_row(
-            "SELECT count(name) FROM sqlite_master WHERE type='table' AND name IN ('chunks','genchunks')",
+            "SELECT count(name) FROM sqlite_master WHERE type='table' AND name IN ('chunks')",
             [],
             |r| r.get(0),
         )?;
-        assert_eq!(count, 2);
+        assert_eq!(count, 1);
         Ok(())
     }
 

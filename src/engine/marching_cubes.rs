@@ -196,8 +196,8 @@ impl Chunk {
         }
 
         smooth_mesh_laplacian(&mut mesh, 2);
-
         compute_normals(&mut mesh);
+        mesh.pos = self.pos;
 
         mesh
     }
@@ -372,6 +372,7 @@ pub struct Mesh {
     pub vertices: Vec<Vertex>,
     pub faces: Vec<Face>,
     pub hashed_points: HashMap<[isize; 4], usize>,
+    pub pos: [i32; 3],
 }
 
 impl Mesh {
@@ -380,6 +381,7 @@ impl Mesh {
             vertices: Vec::new(),
             faces: Vec::new(),
             hashed_points: HashMap::new(),
+            pos: [0, 0, 0],
         }
     }
 

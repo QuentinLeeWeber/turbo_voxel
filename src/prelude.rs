@@ -4,6 +4,8 @@ pub trait HashMapExt<I, T>
 where
     I: Hash + Eq + Clone,
 {
+    /// Retains only the elements for which the predicate evaluates to true,
+    /// returning the removed elements as a vector.
     fn retain_filter<F>(&mut self, f: F) -> Vec<T>
     where
         F: FnMut(&T) -> bool;
@@ -13,8 +15,6 @@ impl<I, T> HashMapExt<I, T> for HashMap<I, T>
 where
     I: Hash + Eq + Clone,
 {
-    /// Retains only the elements for which the predicate evaluates to true,
-    /// returning the removed elements as a vector.
     fn retain_filter<F>(&mut self, mut f: F) -> Vec<T>
     where
         F: FnMut(&T) -> bool,

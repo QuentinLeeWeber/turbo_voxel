@@ -38,7 +38,7 @@ pub enum Material {
     Sand,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Chunk {
     pub pos: [i32; 3],
     pub materials: Box<[[[Material; Self::WIDTH]; Self::WIDTH]; Self::WIDTH]>,
@@ -106,16 +106,25 @@ impl Engine {
             ),
             camera_controller: CameraController::new(10.0, 1.0),
             chunk_loader: ChunkLoader::new(ChunkLoaderSettings {
-                view_distance: 3,
+                view_distance: 1,
                 thread_count: std::thread::available_parallelism()
                     .unwrap_or(NonZero::new(4).unwrap()),
                 db_path: "world.db".into(),
                 world_height: 3,
+                gen_new_world: true,
             }),
         }
     }
 
     fn update(&mut self) {
+        let (cam_x, cam_y, _cam_z) = self.camera.position.into();
+        self.chunk_loader.update(
+            &mut self.renderer,
+            cam_x as i32,
+            cam_y as i32,
+            &mut self.game_object_id_count,
+        );
+
         let mut index: u32 = 0;
         loop {
             let object = self.scene.remove(&GameObjectID(index));

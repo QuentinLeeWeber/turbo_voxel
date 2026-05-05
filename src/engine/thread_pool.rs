@@ -56,8 +56,8 @@ impl<R: Send + 'static> ThreadPool<R> {
         let _ = self.task_tx.send(task);
     }
 
-    pub fn results(&self) -> Receiver<R> {
-        self.result_rx.clone()
+    pub fn results(&self) -> Vec<R> {
+        self.result_rx.try_iter().collect()
     }
 
     pub fn task_count(&self) -> usize {
@@ -73,33 +73,51 @@ mod tests {
     #[test]
     fn basic_submit_and_receive() {
         let pool = ThreadPool::<u32>::new(4);
-        let rx = pool.results();
 
         pool.add_task(|| 1u32);
         pool.add_task(|| 2u32);
         pool.add_task(|| 3u32);
 
-        let mut results = vec![];
-        for _ in 0..3 {
-            results.push(rx.recv().expect("should receive result"));
-        }
+        sleep(Duration::from_millis(2));
+
+        let mut results = pool.results();
         results.sort();
         assert_eq!(results, vec![1, 2, 3]);
     }
 
     #[test]
+    fn test_recv_non_blocking_1() {
+        let pool = ThreadPool::<()>::new(4);
+        let results = pool.results();
+
+        assert!(results.is_empty());
+    }
+
+    #[test]
+    fn test_recv_non_blocking_2() {
+        let pool = ThreadPool::<()>::new(4);
+
+        let results = pool.results();
+        assert!(results.is_empty());
+
+        pool.add_task(|| {
+            sleep(Duration::from_millis(5));
+        });
+        sleep(Duration::from_millis(10));
+
+        let results = pool.results();
+        assert!(!results.is_empty());
+    }
+
+    #[test]
     fn concurrent_workload() {
         let pool = ThreadPool::<usize>::new(8);
-        let rx = pool.results();
 
         for i in 0..100 {
             pool.add_task(move || i * i);
         }
 
-        let mut sum = 0usize;
-        for _ in 0..100 {
-            sum += rx.recv().unwrap();
-        }
+        let sum: usize = pool.results().into_iter().sum();
 
         let expected = (99usize * 100usize * 199usize) / 6;
         assert_eq!(sum, expected);
@@ -108,22 +126,21 @@ mod tests {
     #[test]
     fn heterogeneous_timing() {
         let pool = ThreadPool::<u8>::new(3);
-        let rx = pool.results();
 
         pool.add_task(|| {
-            std::thread::sleep(Duration::from_millis(50));
+            sleep(Duration::from_millis(5));
             1u8
         });
         pool.add_task(|| 2u8);
         pool.add_task(|| {
-            std::thread::sleep(Duration::from_millis(10));
+            sleep(Duration::from_millis(1));
             3u8
         });
 
-        let mut got = vec![];
-        for _ in 0..3 {
-            got.push(rx.recv().unwrap());
-        }
+        sleep(Duration::from_millis(10));
+
+        let mut got = pool.results();
+
         got.sort();
         assert_eq!(got, vec![1, 2, 3]);
     }
@@ -131,21 +148,19 @@ mod tests {
     #[test]
     fn task_count_only() {
         let pool = ThreadPool::<()>::new(4);
-        let rx = pool.results();
 
         assert_eq!(pool.task_count(), 0);
 
         for _ in 0..5 {
-            pool.add_task(move || sleep(Duration::from_millis(5)));
+            pool.add_task(move || sleep(Duration::from_millis(2)));
         }
         assert_eq!(pool.task_count(), 5);
 
-        let mut got = Vec::new();
-        for _ in 0..5 {
-            got.push(rx.recv().expect("should receive result"));
-        }
-
         sleep(Duration::from_millis(10));
+
+        let _got = pool.results();
+
+        sleep(Duration::from_millis(4));
         assert_eq!(pool.task_count(), 0);
     }
 }

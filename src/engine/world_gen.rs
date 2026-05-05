@@ -4,8 +4,6 @@ use crate::engine::perlin_noise::PerlinNoiseParams;
 const PERLIN_SEED: u32 = 123456789;
 
 pub fn generate_chunk(x: i32, y: i32, z: i32) -> Chunk {
-    println!("generate chunks");
-
     let mut chunk = Chunk {
         pos: [x, y, z],
         materials: Chunk::alloc_materials(),
