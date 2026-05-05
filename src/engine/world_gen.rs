@@ -31,17 +31,12 @@ pub fn generate_chunk(x: i32, y: i32, z: i32) -> Chunk {
             terrain[xi][yi] += sea_level;
 
             for zi in 0..CHUNK_WIDTH {
-                let diff = zi as f32 - terrain[xi][yi];
-                if diff > 1.0 {
-                    chunk.materials[xi][yi][zi] = Material::default();
-                    chunk.amount[xi][yi][zi] = 0.0;
-                } else if diff > 0.0 {
-                    chunk.materials[xi][yi][zi] = Material::default();
-                    chunk.amount[xi][yi][zi] = diff;
-                } else {
-                    chunk.materials[xi][yi][zi] = Material::default();
-                    chunk.amount[xi][yi][zi] = 1.0;
-                }
+                let world_z = zi as i32 + z * CHUNK_WIDTH as i32;
+
+                let amount = (terrain[xi][yi] - world_z as f32).clamp(-1.0, 1.0);
+
+                chunk.materials[xi][yi][zi] = Material::default();
+                chunk.amount[xi][yi][zi] = amount;
             }
         }
     }
