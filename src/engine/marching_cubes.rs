@@ -180,16 +180,7 @@ impl Chunk {
                             edge_idx_to_point_hash(edges[2], self.pos, [x, y, z]),
                         ];
 
-                        self.add_face(
-                            &mut mesh,
-                            [
-                                ((x as i32) + self.pos[0] * (Chunk::WIDTH as i32)) as f32,
-                                ((y as i32) + self.pos[1] * (Chunk::WIDTH as i32)) as f32,
-                                ((z as i32) + self.pos[2] * (Chunk::WIDTH as i32)) as f32,
-                            ],
-                            points,
-                            hashes,
-                        );
+                        self.add_face(&mut mesh, [x as f32, y as f32, z as f32], points, hashes);
                     }
                 }
             }
@@ -300,11 +291,11 @@ pub fn smooth_mesh_laplacian(mesh: &mut Mesh, iterations: usize) {
     }
 }
 
-pub fn edge_idx_to_point_hash(idx: i8, pos: [i32; 3], offset: [usize; 3]) -> [isize; 4] {
+pub fn edge_idx_to_point_hash(idx: i8, _pos: [i32; 3], offset: [usize; 3]) -> [isize; 4] {
     let mut hash = EDGE_HASHMAP_DATA[idx as usize];
-    hash[0] += (pos[0] as isize) * (Chunk::WIDTH as isize) + (offset[0] as isize);
-    hash[1] += (pos[1] as isize) * (Chunk::WIDTH as isize) + (offset[1] as isize);
-    hash[2] += (pos[2] as isize) * (Chunk::WIDTH as isize) + (offset[2] as isize);
+    hash[0] += offset[0] as isize;
+    hash[1] += offset[1] as isize;
+    hash[2] += offset[2] as isize;
 
     hash
 }

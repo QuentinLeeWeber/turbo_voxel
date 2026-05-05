@@ -199,7 +199,7 @@ impl Renderer {
                 instance_count: mesh_instances.len() as u32,
                 first_instance: instance_data.len() as u32,
                 first_index: index_buffer.len() as u32,
-                vertex_offset: 0,
+                vertex_offset: vertex_bufer.len() as u32,
             };
 
             //erstelle Vertex und IndexBuffer
@@ -207,6 +207,10 @@ impl Renderer {
             index_buffer.append(&mut data.indices.clone());
             commands.push(command);
             instance_data.append(&mut mesh_instances);
+        }
+
+        if vertex_bufer.is_empty() || index_buffer.is_empty() || instance_data.is_empty() {
+            return;
         }
 
         self.recreate_index_buffer(&index_buffer);

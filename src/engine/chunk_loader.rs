@@ -160,6 +160,11 @@ impl ChunkLoader {
         // Receive generated meshes
         // and upload them to the GPU
         for mesh in self.mesh_builder.results().into_iter() {
+            // Leere Meshes (reine Luft-Chunks) überspringen –
+            // Vulkan-Buffer mit 0 Elementen sind ungültig.
+            if mesh.vertices.is_empty() {
+                continue;
+            }
             let (x, y, z) = mesh.pos.into();
 
             let id = GameObjectID(*game_object_id_count);
