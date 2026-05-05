@@ -189,6 +189,9 @@ impl ApplicationHandler for Engine {
                 self.camera_controller.update_camera(&mut self.camera);
                 self.renderer.update_camera_uniform(&mut self.camera);
                 self.renderer.render();
+                if let Some(render_data) = &self.renderer.render_data {
+                    render_data.window.request_redraw();
+                }
             }
 
             WindowEvent::KeyboardInput { event, .. } => {
