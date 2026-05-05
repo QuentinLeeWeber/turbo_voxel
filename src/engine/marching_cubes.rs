@@ -341,7 +341,7 @@ pub fn edge_idx_to_point_coord(
     ]
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct Vertex {
     pub pos: [f32; 3],
     pub normal: [f32; 3],
@@ -356,7 +356,7 @@ impl Vertex {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct Face {
     pub points: [usize; 3],
 }
@@ -412,5 +412,24 @@ impl From<Mesh> for MeshData {
             indices,
             material_id: 0,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::engine::world_gen::generate_chunk;
+
+    #[test]
+    fn test_mesh_difference_with_world_gen() {
+        let mut voxels = Voxels::new();
+        voxels.insert_chunk(generate_chunk(0, 0, 0));
+        voxels.insert_chunk(generate_chunk(0, 0, 1));
+
+        let mesh1 = voxels.get_chunk_mesh([0, 0, 0]);
+        let mesh2 = voxels.get_chunk_mesh([0, 0, 1]);
+
+        assert!(mesh1.faces != mesh2.faces);
+        assert!(mesh1.vertices != mesh2.vertices);
     }
 }

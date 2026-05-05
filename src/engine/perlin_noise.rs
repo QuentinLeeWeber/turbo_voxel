@@ -105,6 +105,8 @@ fn random_grad(x: i32, y: i32, seed: u32) -> [f32; 2] {
 
 #[cfg(test)]
 mod tests {
+    use crate::engine::world_gen::generate_chunk;
+
     use super::*;
 
     #[test]
@@ -230,5 +232,46 @@ mod tests {
         for &val in &corner[1..] {
             assert!((corner[0] - val).abs() < eps,);
         }
+    }
+
+    #[test]
+    fn test_chunk_difference() {
+        let seed = 123456;
+        let gradient_spacing = 16;
+        let chunk_width = 64;
+        let w = chunk_width as i32;
+        let eps = 1e-5;
+
+        let new_noise = |ox, oy| {
+            PerlinNoise::new(PerlinNoiseParams {
+                seed,
+                chunk_x: ox,
+                chunk_y: oy,
+                gradient_spacing,
+                chunk_width,
+            })
+        };
+
+        let n0 = new_noise(0, 0);
+        let n1 = new_noise(-1, 0);
+
+        let mut is_equal = true;
+        for x in 0..=w {
+            for y in 0..=w {
+                if (n1.noise(x, y) - n0.noise(x, y)).abs() > eps {
+                    is_equal = false;
+                }
+            }
+        }
+        assert!(!is_equal);
+    }
+
+    #[test]
+    fn test_chunk_coordinates() {
+        let chunk = generate_chunk(0, 0, 0);
+        assert_eq!(chunk.pos, [0, 0, 0]);
+
+        let chunk2 = generate_chunk(-1, 3, 43);
+        assert_eq!(chunk2.pos, [-1, 3, 43]);
     }
 }

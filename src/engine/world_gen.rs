@@ -225,4 +225,18 @@ mod tests {
             }
         }
     }
+
+    #[test]
+    fn test_chunk_difference() {
+        let chunk0 = generate_chunk(0, 0, 0);
+
+        for x in 1..3 {
+            for y in 1..3 {
+                for z in 1..3 {
+                    let chunk = generate_chunk(x, y, z);
+                    assert!(!(chunk0.amount == chunk.amount));
+                }
+            }
+        }
+    }
 }
