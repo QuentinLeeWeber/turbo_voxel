@@ -193,13 +193,12 @@ impl Renderer {
             //erstelle meshBufferMapping
             let data = self.mesh_data.get(&mesh).unwrap();
 
-            //für jedes Mesh IndirectDrawCommand
             let command = DrawIndexedIndirectCommand {
                 index_count: data.indices.len() as u32,
                 instance_count: mesh_instances.len() as u32,
                 first_instance: instance_data.len() as u32,
                 first_index: index_buffer.len() as u32,
-                vertex_offset: 0,
+                vertex_offset: vertex_bufer.len() as u32,
             };
 
             //erstelle Vertex und IndexBuffer
