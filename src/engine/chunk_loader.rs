@@ -12,21 +12,107 @@ use crate::{
 use anyhow::Result;
 use bincode_next::config::{self};
 use cgmath::{Deg, Quaternion, Rad, Rotation3};
+use crossbeam::channel::{Receiver, Sender, bounded, unbounded};
 use rusqlite::{Connection, params};
 use std::{
     alloc,
     collections::{HashMap, HashSet},
     num::NonZero,
-    ptr,
+    ptr, thread,
 };
+
+enum DbCommand {
+    Insert(Chunk),
+    Find {
+        x: i32,
+        y: i32,
+        z: i32,
+        response_tx: Sender<(i32, i32, i32, Option<Chunk>)>,
+    },
+}
+
+struct DbWorker {
+    cmd_tx: Sender<DbCommand>,
+}
+
+impl DbWorker {
+    fn spawn(db_path: &str, gen_new_world: bool) -> (Self, HashSet<(i32, i32, i32)>) {
+        let (cmd_tx, cmd_rx) = unbounded::<DbCommand>();
+        let (init_tx, init_rx) = bounded::<HashSet<(i32, i32, i32)>>(1);
+
+        let db_path = db_path.to_string();
+        thread::spawn(move || {
+            if gen_new_world {
+                println!("delete old world: {db_path}");
+                std::fs::remove_file(&db_path).ok();
+            }
+
+            let db = Connection::open(&db_path).expect("could not open database");
+            db.execute_batch("PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;")
+                .unwrap();
+            Chunk::create_table(&db).expect("could not create chunk table");
+
+            let mut generated = HashSet::new();
+            {
+                let mut stmt = db.prepare("SELECT x, y, z FROM chunks").unwrap();
+                let mut rows = stmt.query(params![]).unwrap();
+                while let Some(row) = rows.next().unwrap() {
+                    let x: i32 = row.get(0).unwrap();
+                    let y: i32 = row.get(1).unwrap();
+                    let z: i32 = row.get(2).unwrap();
+                    generated.insert((x, y, z));
+                }
+            }
+            let _ = init_tx.send(generated);
+
+            while let Ok(cmd) = cmd_rx.recv() {
+                match cmd {
+                    DbCommand::Insert(chunk) => {
+                        if let Err(e) = chunk.insert(&db) {
+                            eprintln!("db failed {e}");
+                        }
+                    }
+                    DbCommand::Find {
+                        x,
+                        y,
+                        z,
+                        response_tx,
+                    } => {
+                        let result = Chunk::find(&db, x, y, z).unwrap_or(None);
+                        let _ = response_tx.send((x, y, z, result));
+                    }
+                }
+            }
+        });
+
+        let generated = init_rx.recv().expect("db worker initialization failed");
+        (DbWorker { cmd_tx }, generated)
+    }
+
+    fn insert(&self, chunk: Chunk) {
+        let _ = self.cmd_tx.send(DbCommand::Insert(chunk));
+    }
+
+    fn find(&self, x: i32, y: i32, z: i32, response_tx: Sender<(i32, i32, i32, Option<Chunk>)>) {
+        let _ = self.cmd_tx.send(DbCommand::Find {
+            x,
+            y,
+            z,
+            response_tx,
+        });
+    }
+}
 
 pub struct ChunkLoader {
     meshes: HashMap<(i32, i32, i32), ObjectDataID>,
     generating_chunks: HashSet<(i32, i32, i32)>,
     generated_chunks: HashSet<(i32, i32, i32)>,
     loaded_chunks: HashMap<(i32, i32, i32), Chunk>,
+    loading_from_db: HashSet<(i32, i32, i32)>,
     settings: ChunkLoaderSettings,
-    db: Connection,
+    db_worker: DbWorker,
+    db_load_tx: Sender<(i32, i32, i32, Option<Chunk>)>,
+    db_load_rx: Receiver<(i32, i32, i32, Option<Chunk>)>,
     generator: ThreadPool<Chunk>,
     mesh_builder: ThreadPool<Mesh>,
 }
@@ -41,36 +127,20 @@ pub struct ChunkLoaderSettings {
 
 impl ChunkLoader {
     pub fn new(settings: ChunkLoaderSettings) -> Self {
-        if settings.gen_new_world {
-            println!("deleting old world at path: {}", settings.db_path);
-            std::fs::remove_file(format!("{}", settings.db_path)).ok();
-        }
+        let (db_worker, generated_chunks) =
+            DbWorker::spawn(&settings.db_path, settings.gen_new_world);
 
-        let db = Connection::open(&settings.db_path).expect("could not open database");
-        Chunk::create_table(&db).expect("could not create chunk table");
-
-        let mut generated_chunks = HashSet::new();
-        while let Some(row) = db
-            .prepare("SELECT x, y, z FROM chunks")
-            .unwrap()
-            .query(params![])
-            .expect("could not read generated chunks")
-            .next()
-            .unwrap()
-        {
-            let x: i32 = row.get(0).unwrap();
-            let y: i32 = row.get(1).unwrap();
-            let z: i32 = row.get(2).unwrap();
-
-            generated_chunks.insert((x, y, z));
-        }
+        let (db_load_tx, db_load_rx) = unbounded();
 
         Self {
             meshes: HashMap::new(),
             generating_chunks: HashSet::new(),
             generated_chunks,
             loaded_chunks: HashMap::new(),
-            db,
+            loading_from_db: HashSet::new(),
+            db_worker,
+            db_load_tx,
+            db_load_rx,
             generator: ThreadPool::new(settings.thread_count.get()),
             mesh_builder: ThreadPool::new(settings.thread_count.get()),
             settings,
@@ -98,19 +168,18 @@ impl ChunkLoader {
         for x in (-view_dist..view_dist).map(|i| i + cam_chunk_x) {
             for z in (-view_dist..view_dist).map(|i| i + cam_chunk_z) {
                 for y in 0..self.settings.world_height {
-                    if !self.generated_chunks.contains(&(x, y, z))
-                        && !self.generating_chunks.contains(&(x, y, z))
+                    let pos = (x, y, z);
+
+                    if !self.generated_chunks.contains(&pos)
+                        && !self.generating_chunks.contains(&pos)
                     {
                         self.generate_chunk(x, y, z);
-                        continue;
-                    }
-                    if !self.loaded_chunks.contains_key(&(x, y, z))
-                        && self.generated_chunks.contains(&(x, y, z))
+                    } else if self.generated_chunks.contains(&pos)
+                        && !self.loaded_chunks.contains_key(&pos)
+                        && !self.loading_from_db.contains(&pos)
                     {
-                        // let chunk = Chunk::find(&self.db, x, y, z)
-                        //     .unwrap()
-                        //     .expect("could not load chunk, even though it is marked as generated");
-                        // self.loaded_chunks.insert((x, y, z), chunk);
+                        self.loading_from_db.insert(pos);
+                        self.db_worker.find(x, y, z, self.db_load_tx.clone());
                     }
                 }
             }
@@ -122,39 +191,33 @@ impl ChunkLoader {
                 let is_in_range = (chunk.pos[0] - cam_chunk_x).abs() <= view_dist
                     && (chunk.pos[2] - cam_chunk_z).abs() <= view_dist;
 
-                is_in_range
+                !is_in_range
             })
             .into_iter()
             .for_each(|chunk| {
-                //chunk.insert(&self.db).unwrap();
+                self.db_worker.insert(chunk);
             });
 
+        // Receive results from db loading
+        let db_results: Vec<_> = self.db_load_rx.try_iter().collect();
+        for (x, y, z, chunk) in db_results {
+            self.loading_from_db.remove(&(x, y, z));
+
+            if let Some(chunk) = chunk {
+                self.insert_chunk(chunk);
+            } else {
+                eprintln!("could not find Chunk ({x},{y},{z}) in db, regenerate.");
+                self.generated_chunks.remove(&(x, y, z));
+                self.generate_chunk(x, y, z);
+            }
+        }
+
         // Receive generated chunks from the thread pool,
-        // invoke the mesh builder
-        for result in self.generator.results().into_iter() {
-            let [x, y, z] = result.pos;
-            self.loaded_chunks.insert((x, y, z), result);
+        for chunk in self.generator.results().into_iter() {
+            let [x, y, z] = chunk.pos;
             self.generated_chunks.insert((x, y, z));
             self.generating_chunks.remove(&(x, y, z));
-
-            let mut voxels = marching_cubes::Voxels::new();
-            for (x, y, z) in [
-                (x, y, z),
-                (x + 1, y, z),
-                (x, y + 1, z),
-                (x, y, z + 1),
-                (x + 1, y + 1, z),
-                (x + 1, y, z + 1),
-                (x, y + 1, z + 1),
-                (x + 1, y + 1, z + 1),
-            ] {
-                if let Some(chunk) = self.get_chunk(x, y, z) {
-                    voxels.insert_chunk(chunk.clone());
-                }
-            }
-
-            self.mesh_builder
-                .add_task(move || voxels.get_chunk_mesh([x, y, z]));
+            self.insert_chunk(chunk);
         }
 
         // Receive generated meshes
@@ -183,12 +246,11 @@ impl ChunkLoader {
             self.meshes.insert((x, y, z), object_data);
         }
 
-        let generator_task_count = self.generator.task_count();
-        let mesh_builder_task_count = self.mesh_builder.task_count();
-        if generator_task_count > 0 || mesh_builder_task_count > 0 {
-            println!(
-                "world gen task: {generator_task_count} / mesh build tasks: {mesh_builder_task_count}"
-            );
+        let gen_tasks = self.generator.task_count();
+        let mesh_tasks = self.mesh_builder.task_count();
+        let db_pending = self.loading_from_db.len();
+        if gen_tasks > 0 || mesh_tasks > 0 || db_pending > 0 {
+            println!("world gen: {gen_tasks} | mesh build: {mesh_tasks} | db load: {db_pending}");
         }
     }
 
@@ -204,6 +266,31 @@ impl ChunkLoader {
         self.generator
             .add_task(move || world_gen::generate_chunk(x, y, z));
         self.generating_chunks.insert((x, y, z));
+    }
+
+    // add chunk to loaded chunks
+    // and invoke the mesh builder
+    fn insert_chunk(&mut self, chunk: Chunk) {
+        let [x, y, z] = chunk.pos;
+        self.loaded_chunks.insert((x, y, z), chunk);
+
+        let mut voxels = marching_cubes::Voxels::new();
+        for (nx, ny, nz) in [
+            (x, y, z),
+            (x + 1, y, z),
+            (x, y + 1, z),
+            (x, y, z + 1),
+            (x + 1, y + 1, z),
+            (x + 1, y, z + 1),
+            (x, y + 1, z + 1),
+            (x + 1, y + 1, z + 1),
+        ] {
+            if let Some(c) = self.loaded_chunks.get(&(nx, ny, nz)) {
+                voxels.insert_chunk(c.clone());
+            }
+        }
+        self.mesh_builder
+            .add_task(move || voxels.get_chunk_mesh([x, y, z]));
     }
 }
 
@@ -304,6 +391,7 @@ mod tests {
     use anyhow::Result;
     use bincode_next::config::standard;
     use rusqlite::Connection;
+    use std::{thread::sleep, time::Duration};
 
     fn setup_db() -> Result<Connection> {
         let conn = Connection::open_in_memory()?;
@@ -423,5 +511,29 @@ mod tests {
         assert!((found.amount[0][0][0] - c2.amount[0][0][0]).abs() < f32::EPSILON);
 
         Ok(())
+    }
+
+    #[test]
+    fn test_db_worker_insert_and_find() {
+        let dir = std::env::temp_dir();
+        let path = dir.join("test_db_worker.db");
+        let _ = std::fs::remove_file(&path);
+
+        let (worker, initial) = DbWorker::spawn(path.to_str().unwrap(), false);
+        assert!(initial.is_empty());
+
+        let chunk = Chunk::stone_block(5, 0, 5);
+        worker.insert(chunk);
+
+        sleep(Duration::from_millis(50));
+
+        let (tx, rx) = bounded(1);
+        worker.find(5, 0, 5, tx);
+
+        let (x, y, z, result) = rx.recv_timeout(Duration::from_secs(2)).unwrap();
+        assert_eq!((x, y, z), (5, 0, 5));
+        assert!(result.is_some());
+
+        let _ = std::fs::remove_file(&path);
     }
 }
