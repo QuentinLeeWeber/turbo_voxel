@@ -117,11 +117,11 @@ impl Engine {
     }
 
     fn update(&mut self) {
-        let (cam_x, cam_y, _cam_z) = self.camera.position.into();
+        let (cam_x, _cam_y, cam_z) = self.camera.position.into();
         self.chunk_loader.update(
             &mut self.renderer,
             cam_x as i32,
-            cam_y as i32,
+            cam_z as i32,
             &mut self.game_object_id_count,
         );
 

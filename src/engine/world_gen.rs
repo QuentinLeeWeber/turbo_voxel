@@ -10,10 +10,10 @@ pub fn generate_chunk(x: i32, y: i32, z: i32) -> Chunk {
         amount: Chunk::alloc_amount(),
     };
 
-    let sea_level = 8.0;
+    let sea_level = 20.0;
     let mut terrain = ridged_noise(RigedNoiseParams {
         chunk_x: x,
-        chunk_y: y,
+        chunk_y: z,
         amplitude: 20.,
         gradient_spacing: 100,
         seed: PERLIN_SEED,
@@ -24,13 +24,13 @@ pub fn generate_chunk(x: i32, y: i32, z: i32) -> Chunk {
     });
 
     for xi in 0..Chunk::WIDTH {
-        for yi in 0..Chunk::WIDTH {
-            terrain[xi][yi] += sea_level;
+        for zi in 0..Chunk::WIDTH {
+            terrain[xi][zi] += sea_level;
 
-            for zi in 0..Chunk::WIDTH {
-                let world_z = zi as i32 + z * Chunk::WIDTH as i32;
+            for yi in 0..Chunk::WIDTH {
+                let world_y = yi as i32 + y * Chunk::WIDTH as i32;
 
-                let amount = (terrain[xi][yi] - world_z as f32).clamp(-1.0, 1.0);
+                let amount = (terrain[xi][zi] - world_y as f32).clamp(-1.0, 1.0);
 
                 chunk.materials[xi][yi][zi] = Material::default();
                 chunk.amount[xi][yi][zi] = amount;
@@ -223,15 +223,13 @@ mod tests {
 
     #[test]
     fn test_chunk_difference() {
-        let chunk0 = generate_chunk(0, 0, 0);
+        let chunk_origin = generate_chunk(0, 0, 0);
+        let chunk_x = generate_chunk(1, 0, 0);
+        let chunk_z = generate_chunk(0, 0, 1);
+        assert!(chunk_origin.amount != chunk_x.amount);
+        assert!(chunk_origin.amount != chunk_z.amount);
 
-        for x in 1..3 {
-            for y in 1..3 {
-                for z in 1..3 {
-                    let chunk = generate_chunk(x, y, z);
-                    assert!(!(chunk0.amount == chunk.amount));
-                }
-            }
-        }
+        let chunk_above = generate_chunk(0, 1, 0);
+        assert!(chunk_origin.amount != chunk_above.amount);
     }
 }

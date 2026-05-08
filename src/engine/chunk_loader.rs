@@ -81,7 +81,7 @@ impl ChunkLoader {
         &mut self,
         renderer: &mut Renderer,
         cam_x: i32,
-        cam_y: i32,
+        cam_z: i32,
         game_object_id_count: &mut u32,
     ) {
         let view_dist = self.settings.view_distance;
@@ -92,12 +92,12 @@ impl ChunkLoader {
         };
 
         let cam_chunk_x = div(cam_x, Chunk::WIDTH as i32);
-        let cam_chunk_y = div(cam_y, Chunk::WIDTH as i32);
+        let cam_chunk_z = div(cam_z, Chunk::WIDTH as i32);
 
         // Look for chunks to generate or load
         for x in (-view_dist..view_dist).map(|i| i + cam_chunk_x) {
-            for y in (-view_dist..view_dist).map(|i| i + cam_chunk_y) {
-                for z in 0..self.settings.world_height {
+            for z in (-view_dist..view_dist).map(|i| i + cam_chunk_z) {
+                for y in 0..self.settings.world_height {
                     if !self.generated_chunks.contains(&(x, y, z))
                         && !self.generating_chunks.contains(&(x, y, z))
                     {
@@ -120,7 +120,7 @@ impl ChunkLoader {
         self.loaded_chunks
             .retain_filter(|chunk| {
                 let is_in_range = (chunk.pos[0] - cam_chunk_x).abs() <= view_dist
-                    && (chunk.pos[1] - cam_chunk_y).abs() <= view_dist;
+                    && (chunk.pos[2] - cam_chunk_z).abs() <= view_dist;
 
                 is_in_range
             })
@@ -171,11 +171,11 @@ impl ChunkLoader {
             let instance = InstanceData::new(
                 [
                     x as f32 * Chunk::WIDTH as f32,
-                    z as f32 * Chunk::WIDTH as f32,
                     y as f32 * Chunk::WIDTH as f32,
+                    z as f32 * Chunk::WIDTH as f32,
                 ]
                 .into(),
-                Quaternion::from_angle_x(Rad::from(Deg(90.0))),
+                Quaternion::from_angle_x(Rad::from(Deg(0.0))),
             );
 
             println!("upload mesh");

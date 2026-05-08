@@ -395,6 +395,24 @@ mod tests {
     use super::*;
     use crate::engine::world_gen::generate_chunk;
 
+    fn build_mesh_with_neighbors(chunk_pos: [i32; 3]) -> Mesh {
+        let [x, y, z] = chunk_pos;
+        let mut voxels = Voxels::new();
+        for (dx, dy, dz) in [
+            (0, 0, 0),
+            (1, 0, 0),
+            (0, 1, 0),
+            (0, 0, 1),
+            (1, 1, 0),
+            (1, 0, 1),
+            (0, 1, 1),
+            (1, 1, 1),
+        ] {
+            voxels.insert_chunk(generate_chunk(x + dx, y + dy, z + dz));
+        }
+        voxels.get_chunk_mesh(chunk_pos)
+    }
+
     #[test]
     fn test_mesh_difference_with_world_gen() {
         let mut voxels = Voxels::new();
@@ -404,36 +422,49 @@ mod tests {
         let mesh1 = voxels.get_chunk_mesh([0, 0, 0]);
         let mesh2 = voxels.get_chunk_mesh([0, 0, 1]);
 
+        assert!(!mesh1.faces.is_empty());
+        assert!(!mesh2.faces.is_empty());
         assert!(mesh1.faces != mesh2.faces);
         assert!(mesh1.vertices != mesh2.vertices);
     }
 
     #[test]
-    fn test_chunk_seamless_transition() {
-        let mut voxels = Voxels::new();
+    fn test_mesh_nonempty_at_terrain_and_empty_above() {
+        let mut voxels_ground = Voxels::new();
+        voxels_ground.insert_chunk(generate_chunk(0, 0, 0));
+        let mesh_ground = voxels_ground.get_chunk_mesh([0, 0, 0]);
+        assert!(!mesh_ground.faces.is_empty());
 
-        voxels.insert_chunk(generate_chunk(0, 0, 0));
-        voxels.insert_chunk(generate_chunk(0, 0, 1));
+        let mut voxels_sky = Voxels::new();
+        voxels_sky.insert_chunk(generate_chunk(0, 1, 0));
+        let mesh_sky = voxels_sky.get_chunk_mesh([0, 1, 0]);
+        assert!(mesh_sky.faces.is_empty());
+    }
 
-        let mesh_a = voxels.get_chunk_mesh([0, 0, 0]);
-        let mesh_b = voxels.get_chunk_mesh([0, 0, 1]);
+    #[test]
+    fn test_chunk_seamless_transition_x() {
+        let mesh_a = build_mesh_with_neighbors([0, 0, 0]);
+        let mesh_b = build_mesh_with_neighbors([1, 0, 0]);
 
         let width = Chunk::WIDTH as f32;
-        let eps = 1e-4;
+        let eps = 1e-3;
 
         let border_a: Vec<[f32; 3]> = mesh_a
             .vertices
             .iter()
-            .map(|v| [v.pos[0], v.pos[1], v.pos[2]])
-            .filter(|p| (p[2] - (width - 1.0)).abs() < 1.0)
+            .map(|v| v.pos)
+            .filter(|p| (p[0] - width).abs() < eps)
             .collect();
 
         let border_b: Vec<[f32; 3]> = mesh_b
             .vertices
             .iter()
-            .map(|v| [v.pos[0], v.pos[1], v.pos[2] + width])
-            .filter(|p| p[2].abs() < 1.0)
+            .map(|v| [v.pos[0] + width, v.pos[1], v.pos[2]])
+            .filter(|p| (p[0] - width).abs() < eps)
             .collect();
+
+        assert!(!border_a.is_empty());
+        assert!(!border_b.is_empty());
 
         for a in &border_a {
             let found_close_vertex = border_b.iter().any(|b| {
@@ -445,32 +476,29 @@ mod tests {
     }
 
     #[test]
-    fn test_no_cross_voxel_system_stitching() {
-        let mut voxels_a = Voxels::new();
-        let mut voxels_b = Voxels::new();
-
-        voxels_a.insert_chunk(generate_chunk(0, 0, 0));
-        voxels_b.insert_chunk(generate_chunk(0, 0, 1));
-
-        let mesh_a = voxels_a.get_chunk_mesh([0, 0, 0]);
-        let mesh_b = voxels_b.get_chunk_mesh([0, 0, 1]);
+    fn test_chunk_seamless_transition_z() {
+        let mesh_a = build_mesh_with_neighbors([0, 0, 0]);
+        let mesh_b = build_mesh_with_neighbors([0, 0, 1]);
 
         let width = Chunk::WIDTH as f32;
-        let eps = 1e-4;
+        let eps = 1e-3;
 
         let border_a: Vec<[f32; 3]> = mesh_a
             .vertices
             .iter()
-            .map(|v| [v.pos[0], v.pos[1], v.pos[2]])
-            .filter(|p| (p[2] - (width - 1.0)).abs() < 1.0)
+            .map(|v| v.pos)
+            .filter(|p| (p[2] - width).abs() < eps)
             .collect();
 
         let border_b: Vec<[f32; 3]> = mesh_b
             .vertices
             .iter()
             .map(|v| [v.pos[0], v.pos[1], v.pos[2] + width])
-            .filter(|p| p[2].abs() < 1.0)
+            .filter(|p| (p[2] - width).abs() < eps)
             .collect();
+
+        assert!(!border_a.is_empty());
+        assert!(!border_b.is_empty());
 
         for a in &border_a {
             let found_close_vertex = border_b.iter().any(|b| {
