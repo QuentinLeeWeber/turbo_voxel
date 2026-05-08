@@ -2,11 +2,11 @@ use crate::{
     engine::{
         Chunk, Material, Renderer,
         marching_cubes::{self, Mesh},
-        renderer::{ObjectDataID, prelude::InstanceData},
+        renderer::prelude::InstanceData,
         thread_pool::ThreadPool,
         world_gen,
     },
-    game_object::{GameObjectID, GameObjectTrait},
+    game_object::GameObjectID,
     prelude::*,
 };
 use anyhow::Result;
@@ -104,7 +104,7 @@ impl DbWorker {
 }
 
 pub struct ChunkLoader {
-    meshes: HashMap<(i32, i32, i32), ObjectDataID>,
+    meshes: HashMap<(i32, i32, i32), GameObjectID>,
     generating_chunks: HashSet<(i32, i32, i32)>,
     generated_chunks: HashSet<(i32, i32, i32)>,
     loaded_chunks: HashMap<(i32, i32, i32), Chunk>,
@@ -195,6 +195,11 @@ impl ChunkLoader {
             })
             .into_iter()
             .for_each(|chunk| {
+                let [x, y, z] = chunk.pos;
+                let game_object_id = self.meshes.remove(&(x, y, z));
+                if let Some(game_object_id) = game_object_id {
+                    renderer.remove_game_object(game_object_id);
+                }
                 self.db_worker.insert(chunk);
             });
 
@@ -242,8 +247,8 @@ impl ChunkLoader {
             );
 
             println!("upload mesh");
-            let object_data = renderer.instantiate_object(vec![mesh.into()], instance, id);
-            self.meshes.insert((x, y, z), object_data);
+            let _object_data = renderer.instantiate_object(vec![mesh.into()], instance, id);
+            self.meshes.insert((x, y, z), id);
         }
 
         let gen_tasks = self.generator.task_count();
@@ -275,18 +280,14 @@ impl ChunkLoader {
         self.loaded_chunks.insert((x, y, z), chunk);
 
         let mut voxels = marching_cubes::Voxels::new();
-        for (nx, ny, nz) in [
-            (x, y, z),
-            (x + 1, y, z),
-            (x, y + 1, z),
-            (x, y, z + 1),
-            (x + 1, y + 1, z),
-            (x + 1, y, z + 1),
-            (x, y + 1, z + 1),
-            (x + 1, y + 1, z + 1),
-        ] {
-            if let Some(c) = self.loaded_chunks.get(&(nx, ny, nz)) {
-                voxels.insert_chunk(c.clone());
+        for dx in 0..=1i32 {
+            for dy in 0..=1i32 {
+                for dz in 0..=1i32 {
+                    let pos = (x + dx, y + dy, z + dz);
+                    if let Some(c) = self.loaded_chunks.get(&pos) {
+                        voxels.insert_chunk(c.clone());
+                    }
+                }
             }
         }
         self.mesh_builder
