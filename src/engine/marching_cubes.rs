@@ -38,12 +38,6 @@ impl Voxels {
         self.chunks.remove(&pos)
     }
 
-    pub fn new_chunk(&mut self, pos: [i32; 3]) -> &mut Chunk {
-        let chunk = Chunk::new(pos);
-        self.insert_chunk(chunk);
-        self.get_mut_chunk(pos)
-    }
-
     pub fn get_chunk_mesh(&self, pos: [i32; 3]) -> Mesh {
         let chunk = &self.chunks[&pos];
 
@@ -52,16 +46,6 @@ impl Voxels {
 }
 
 impl Chunk {
-    pub fn new(pos: [i32; 3]) -> Self {
-        Self {
-            pos,
-            amount: Box::new([[[0.0; Chunk::WIDTH]; Chunk::WIDTH]; Chunk::WIDTH]),
-            materials: Box::new(
-                [[[Material::default(); Chunk::WIDTH]; Chunk::WIDTH]; Chunk::WIDTH],
-            ),
-        }
-    }
-
     pub fn get_voxel(&self, voxels: &Voxels, x: usize, y: usize, z: usize) -> f32 {
         // Fast path: coordinates are within this chunk
         if x < Self::WIDTH && y < Self::WIDTH && z < Self::WIDTH {
@@ -186,7 +170,7 @@ impl Chunk {
             }
         }
 
-        smooth_mesh_laplacian(&mut mesh, 2);
+        //smooth_mesh_laplacian(&mut mesh, 2);
         compute_normals(&mut mesh);
         mesh.pos = self.pos;
 
@@ -422,5 +406,78 @@ mod tests {
 
         assert!(mesh1.faces != mesh2.faces);
         assert!(mesh1.vertices != mesh2.vertices);
+    }
+
+    #[test]
+    fn test_chunk_seamless_transition() {
+        let mut voxels = Voxels::new();
+
+        voxels.insert_chunk(generate_chunk(0, 0, 0));
+        voxels.insert_chunk(generate_chunk(0, 0, 1));
+
+        let mesh_a = voxels.get_chunk_mesh([0, 0, 0]);
+        let mesh_b = voxels.get_chunk_mesh([0, 0, 1]);
+
+        let width = Chunk::WIDTH as f32;
+        let eps = 1e-4;
+
+        let border_a: Vec<[f32; 3]> = mesh_a
+            .vertices
+            .iter()
+            .map(|v| [v.pos[0], v.pos[1], v.pos[2]])
+            .filter(|p| (p[2] - (width - 1.0)).abs() < 1.0)
+            .collect();
+
+        let border_b: Vec<[f32; 3]> = mesh_b
+            .vertices
+            .iter()
+            .map(|v| [v.pos[0], v.pos[1], v.pos[2] + width])
+            .filter(|p| p[2].abs() < 1.0)
+            .collect();
+
+        for a in &border_a {
+            let found_close_vertex = border_b.iter().any(|b| {
+                (a[0] - b[0]).abs() < eps && (a[1] - b[1]).abs() < eps && (a[2] - b[2]).abs() < eps
+            });
+
+            assert!(found_close_vertex);
+        }
+    }
+
+    #[test]
+    fn test_no_cross_voxel_system_stitching() {
+        let mut voxels_a = Voxels::new();
+        let mut voxels_b = Voxels::new();
+
+        voxels_a.insert_chunk(generate_chunk(0, 0, 0));
+        voxels_b.insert_chunk(generate_chunk(0, 0, 1));
+
+        let mesh_a = voxels_a.get_chunk_mesh([0, 0, 0]);
+        let mesh_b = voxels_b.get_chunk_mesh([0, 0, 1]);
+
+        let width = Chunk::WIDTH as f32;
+        let eps = 1e-4;
+
+        let border_a: Vec<[f32; 3]> = mesh_a
+            .vertices
+            .iter()
+            .map(|v| [v.pos[0], v.pos[1], v.pos[2]])
+            .filter(|p| (p[2] - (width - 1.0)).abs() < 1.0)
+            .collect();
+
+        let border_b: Vec<[f32; 3]> = mesh_b
+            .vertices
+            .iter()
+            .map(|v| [v.pos[0], v.pos[1], v.pos[2] + width])
+            .filter(|p| p[2].abs() < 1.0)
+            .collect();
+
+        for a in &border_a {
+            let found_close_vertex = border_b.iter().any(|b| {
+                (a[0] - b[0]).abs() < eps && (a[1] - b[1]).abs() < eps && (a[2] - b[2]).abs() < eps
+            });
+
+            assert!(found_close_vertex);
+        }
     }
 }

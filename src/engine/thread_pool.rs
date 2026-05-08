@@ -29,7 +29,6 @@ impl<R: Send + 'static> ThreadPool<R> {
             let task_count_cloned = task_count.clone();
             let handle = thread::spawn(move || {
                 while let Ok(task) = task_rx.recv() {
-                    // task taken from queue -> decrement when done
                     let res = task();
                     let _ = result_tx.send(res);
                     task_count_cloned.fetch_sub(1, Ordering::SeqCst);
@@ -116,6 +115,8 @@ mod tests {
         for i in 0..100 {
             pool.add_task(move || i * i);
         }
+
+        sleep(Duration::from_millis(5));
 
         let sum: usize = pool.results().into_iter().sum();
 

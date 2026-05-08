@@ -160,8 +160,6 @@ impl ChunkLoader {
         // Receive generated meshes
         // and upload them to the GPU
         for mesh in self.mesh_builder.results().into_iter() {
-            // Leere Meshes (reine Luft-Chunks) überspringen –
-            // Vulkan-Buffer mit 0 Elementen sind ungültig.
             if mesh.vertices.is_empty() {
                 continue;
             }
@@ -173,8 +171,8 @@ impl ChunkLoader {
             let instance = InstanceData::new(
                 [
                     x as f32 * Chunk::WIDTH as f32,
-                    y as f32 * Chunk::WIDTH as f32,
                     z as f32 * Chunk::WIDTH as f32,
+                    y as f32 * Chunk::WIDTH as f32,
                 ]
                 .into(),
                 Quaternion::from_angle_x(Rad::from(Deg(90.0))),
