@@ -95,6 +95,80 @@ fn ridged_noise(params: RigedNoiseParams) -> Vec<Vec<f32>> {
 mod tests {
     use super::*;
 
+    // Run with: cargo test debug_ridged_noise_image -- --nocapture
+    #[test]
+    fn debug_ridged_noise_image() {
+        use image::{ImageBuffer, Rgb};
+        use std::fs;
+
+        const CHUNKS_X: usize = 4;
+        const CHUNKS_Y: usize = 4;
+
+        const CHUNK_WIDTH: usize = 128;
+        const BORDER_PX: usize = 2;
+
+        let img_w = CHUNKS_X * CHUNK_WIDTH + (CHUNKS_X - 1) * BORDER_PX;
+        let img_h = CHUNKS_Y * CHUNK_WIDTH + (CHUNKS_Y - 1) * BORDER_PX;
+
+        let mut chunks: Vec<Vec<Vec<f32>>> = Vec::with_capacity(CHUNKS_X * CHUNKS_Y);
+        let mut min_val = f32::MAX;
+        let mut max_val = f32::MIN;
+
+        for cy in 0..CHUNKS_Y {
+            for cx in 0..CHUNKS_X {
+                let vals = ridged_noise(RigedNoiseParams {
+                    chunk_x: cx as i32,
+                    chunk_y: cy as i32,
+                    amplitude: 20.0,
+                    gradient_spacing: 100,
+                    seed: PERLIN_SEED,
+                    octaves: 5,
+                    frequency_gain: 0.5,
+                    amplitude_gain: 0.5,
+                    chunk_width: CHUNK_WIDTH as u32,
+                });
+
+                for x in 0..CHUNK_WIDTH {
+                    for y in 0..CHUNK_WIDTH {
+                        let v = vals[x][y];
+                        if v < min_val {
+                            min_val = v;
+                        }
+                        if v > max_val {
+                            max_val = v;
+                        }
+                    }
+                }
+                chunks.push(vals);
+            }
+        }
+
+        let range = (max_val - min_val).max(1e-6);
+        let border_color = Rgb([255u8, 0u8, 0u8]);
+        let mut img: ImageBuffer<Rgb<u8>, Vec<u8>> =
+            ImageBuffer::from_pixel(img_w as u32, img_h as u32, border_color);
+
+        for cy in 0..CHUNKS_Y {
+            for cx in 0..CHUNKS_X {
+                let ox = cx * (CHUNK_WIDTH + BORDER_PX);
+                let oy = cy * (CHUNK_WIDTH + BORDER_PX);
+                let vals = &chunks[cy * CHUNKS_X + cx];
+
+                for x in 0..CHUNK_WIDTH {
+                    for y in 0..CHUNK_WIDTH {
+                        let v = vals[x][y];
+                        let byte = ((v - min_val) / range * 255.0) as u8;
+                        img.put_pixel((ox + x) as u32, (oy + y) as u32, Rgb([byte, byte, byte]));
+                    }
+                }
+            }
+        }
+
+        fs::create_dir_all("test_output").expect("Could not create test_output/");
+        img.save("test_output/debug_ridged_noise.png")
+            .expect("Failed to save test_output/debug_ridged_noise.png");
+    }
+
     #[test]
     fn test_ridged_noise_continuity() {
         let eps = 1.;
