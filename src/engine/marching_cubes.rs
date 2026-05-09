@@ -443,6 +443,8 @@ mod tests {
 
     #[test]
     fn test_chunk_seamless_transition_x() {
+        assert!(false, "i think this test should fail, but it doesn't");
+
         let mesh_a = build_mesh_with_neighbors([0, 0, 0]);
         let mesh_b = build_mesh_with_neighbors([1, 0, 0]);
 
@@ -477,6 +479,8 @@ mod tests {
 
     #[test]
     fn test_chunk_seamless_transition_z() {
+        assert!(false, "i think this test should fail, but it doesn't");
+
         let mesh_a = build_mesh_with_neighbors([0, 0, 0]);
         let mesh_b = build_mesh_with_neighbors([0, 0, 1]);
 

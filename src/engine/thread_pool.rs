@@ -17,23 +17,30 @@ pub struct ThreadPool<R: Send + 'static> {
 }
 
 impl<R: Send + 'static> ThreadPool<R> {
-    pub fn new(num_workers: usize) -> Self {
+    pub fn new(num_workers: usize, name: Option<String>) -> Self {
         let (task_tx, task_rx) = unbounded::<Task<R>>();
         let (result_tx, result_rx) = unbounded::<R>();
         let mut workers = Vec::new();
         let task_count = Arc::new(AtomicUsize::new(0));
 
-        for _ in 0..num_workers {
+        for i in 0..num_workers {
             let task_rx = task_rx.clone();
             let result_tx = result_tx.clone();
             let task_count_cloned = task_count.clone();
-            let handle = thread::spawn(move || {
-                while let Ok(task) = task_rx.recv() {
-                    let res = task();
-                    let _ = result_tx.send(res);
-                    task_count_cloned.fetch_sub(1, Ordering::SeqCst);
-                }
-            });
+            let handle = thread::Builder::new()
+                .name(format!(
+                    "worker {}, of pool {}",
+                    i,
+                    name.as_deref().unwrap_or("unnamed")
+                ))
+                .spawn(move || {
+                    while let Ok(task) = task_rx.recv() {
+                        let res = task();
+                        let _ = result_tx.send(res);
+                        task_count_cloned.fetch_sub(1, Ordering::SeqCst);
+                    }
+                })
+                .unwrap();
             workers.push(handle);
         }
 
@@ -71,7 +78,7 @@ mod tests {
 
     #[test]
     fn basic_submit_and_receive() {
-        let pool = ThreadPool::<u32>::new(4);
+        let pool = ThreadPool::<u32>::new(4, None);
 
         pool.add_task(|| 1u32);
         pool.add_task(|| 2u32);
@@ -86,7 +93,7 @@ mod tests {
 
     #[test]
     fn test_recv_non_blocking_1() {
-        let pool = ThreadPool::<()>::new(4);
+        let pool = ThreadPool::<()>::new(4, None);
         let results = pool.results();
 
         assert!(results.is_empty());
@@ -94,7 +101,7 @@ mod tests {
 
     #[test]
     fn test_recv_non_blocking_2() {
-        let pool = ThreadPool::<()>::new(4);
+        let pool = ThreadPool::<()>::new(4, None);
 
         let results = pool.results();
         assert!(results.is_empty());
@@ -110,7 +117,7 @@ mod tests {
 
     #[test]
     fn concurrent_workload() {
-        let pool = ThreadPool::<usize>::new(8);
+        let pool = ThreadPool::<usize>::new(8, None);
 
         for i in 0..100 {
             pool.add_task(move || i * i);
@@ -126,7 +133,7 @@ mod tests {
 
     #[test]
     fn heterogeneous_timing() {
-        let pool = ThreadPool::<u8>::new(3);
+        let pool = ThreadPool::<u8>::new(3, None);
 
         pool.add_task(|| {
             sleep(Duration::from_millis(5));
@@ -148,7 +155,7 @@ mod tests {
 
     #[test]
     fn task_count_only() {
-        let pool = ThreadPool::<()>::new(4);
+        let pool = ThreadPool::<()>::new(4, None);
 
         assert_eq!(pool.task_count(), 0);
 

@@ -41,49 +41,52 @@ impl DbWorker {
         let (init_tx, init_rx) = bounded::<HashSet<(i32, i32, i32)>>(1);
 
         let db_path = db_path.to_string();
-        thread::spawn(move || {
-            if gen_new_world {
-                println!("delete old world: {db_path}");
-                std::fs::remove_file(&db_path).ok();
-            }
-
-            let db = Connection::open(&db_path).expect("could not open database");
-            db.execute_batch("PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;")
-                .unwrap();
-            Chunk::create_table(&db).expect("could not create chunk table");
-
-            let mut generated = HashSet::new();
-            {
-                let mut stmt = db.prepare("SELECT x, y, z FROM chunks").unwrap();
-                let mut rows = stmt.query(params![]).unwrap();
-                while let Some(row) = rows.next().unwrap() {
-                    let x: i32 = row.get(0).unwrap();
-                    let y: i32 = row.get(1).unwrap();
-                    let z: i32 = row.get(2).unwrap();
-                    generated.insert((x, y, z));
+        thread::Builder::new()
+            .name("db_worker".to_string())
+            .spawn(move || {
+                if gen_new_world {
+                    println!("delete old world: {db_path}");
+                    std::fs::remove_file(&db_path).ok();
                 }
-            }
-            let _ = init_tx.send(generated);
 
-            while let Ok(cmd) = cmd_rx.recv() {
-                match cmd {
-                    DbCommand::Insert(chunk) => {
-                        if let Err(e) = chunk.insert(&db) {
-                            eprintln!("db failed {e}");
+                let db = Connection::open(&db_path).expect("could not open database");
+                db.execute_batch("PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;")
+                    .unwrap();
+                Chunk::create_table(&db).expect("could not create chunk table");
+
+                let mut generated = HashSet::new();
+                {
+                    let mut stmt = db.prepare("SELECT x, y, z FROM chunks").unwrap();
+                    let mut rows = stmt.query(params![]).unwrap();
+                    while let Some(row) = rows.next().unwrap() {
+                        let x: i32 = row.get(0).unwrap();
+                        let y: i32 = row.get(1).unwrap();
+                        let z: i32 = row.get(2).unwrap();
+                        generated.insert((x, y, z));
+                    }
+                }
+                let _ = init_tx.send(generated);
+
+                while let Ok(cmd) = cmd_rx.recv() {
+                    match cmd {
+                        DbCommand::Insert(chunk) => {
+                            if let Err(e) = chunk.insert(&db) {
+                                eprintln!("db failed {e}");
+                            }
+                        }
+                        DbCommand::Find {
+                            x,
+                            y,
+                            z,
+                            response_tx,
+                        } => {
+                            let result = Chunk::find(&db, x, y, z).unwrap_or(None);
+                            let _ = response_tx.send((x, y, z, result));
                         }
                     }
-                    DbCommand::Find {
-                        x,
-                        y,
-                        z,
-                        response_tx,
-                    } => {
-                        let result = Chunk::find(&db, x, y, z).unwrap_or(None);
-                        let _ = response_tx.send((x, y, z, result));
-                    }
                 }
-            }
-        });
+            })
+            .unwrap();
 
         let generated = init_rx.recv().expect("db worker initialization failed");
         (DbWorker { cmd_tx }, generated)
@@ -104,7 +107,7 @@ impl DbWorker {
 }
 
 pub struct ChunkLoader {
-    meshes: HashMap<(i32, i32, i32), GameObjectID>,
+    meshes: HashMap<(i32, i32, i32), (GameObjectID, i32)>,
     generating_chunks: HashSet<(i32, i32, i32)>,
     generated_chunks: HashSet<(i32, i32, i32)>,
     loaded_chunks: HashMap<(i32, i32, i32), Chunk>,
@@ -114,7 +117,8 @@ pub struct ChunkLoader {
     db_load_tx: Sender<(i32, i32, i32, Option<Chunk>)>,
     db_load_rx: Receiver<(i32, i32, i32, Option<Chunk>)>,
     generator: ThreadPool<Chunk>,
-    mesh_builder: ThreadPool<Mesh>,
+    mesh_builder: ThreadPool<(Mesh, i32)>,
+    mesh_count: i32,
 }
 
 pub struct ChunkLoaderSettings {
@@ -141,9 +145,16 @@ impl ChunkLoader {
             db_worker,
             db_load_tx,
             db_load_rx,
-            generator: ThreadPool::new(settings.thread_count.get()),
-            mesh_builder: ThreadPool::new(settings.thread_count.get()),
+            generator: ThreadPool::new(
+                settings.thread_count.get(),
+                Some("chunk_generator".to_string()),
+            ),
+            mesh_builder: ThreadPool::new(
+                settings.thread_count.get(),
+                Some("mesh_builder".to_string()),
+            ),
             settings,
+            mesh_count: 0,
         }
     }
 
@@ -196,8 +207,7 @@ impl ChunkLoader {
             .into_iter()
             .for_each(|chunk| {
                 let [x, y, z] = chunk.pos;
-                let game_object_id = self.meshes.remove(&(x, y, z));
-                if let Some(game_object_id) = game_object_id {
+                if let Some((game_object_id, _)) = self.meshes.remove(&(x, y, z)) {
                     renderer.remove_game_object(game_object_id);
                 }
                 self.db_worker.insert(chunk);
@@ -227,13 +237,13 @@ impl ChunkLoader {
 
         // Receive generated meshes
         // and upload them to the GPU
-        for mesh in self.mesh_builder.results().into_iter() {
+        for (mesh, mesh_id) in self.mesh_builder.results().into_iter() {
             if mesh.vertices.is_empty() {
                 continue;
             }
             let (x, y, z) = mesh.pos.into();
 
-            let id = GameObjectID(*game_object_id_count);
+            let game_object_id = GameObjectID(*game_object_id_count);
             *game_object_id_count += 1;
 
             let instance = InstanceData::new(
@@ -246,9 +256,16 @@ impl ChunkLoader {
                 Quaternion::from_angle_x(Rad::from(Deg(0.0))),
             );
 
-            println!("upload mesh");
-            let _object_data = renderer.instantiate_object(vec![mesh.into()], instance, id);
-            self.meshes.insert((x, y, z), id);
+            let _object_data =
+                renderer.instantiate_object(vec![mesh.into()], instance, game_object_id);
+            if let Some((game_object_id, count)) = self.meshes.get(&(x, y, z)) {
+                if mesh_id > *count {
+                    renderer.remove_game_object(*game_object_id);
+                    self.meshes.insert((x, y, z), (*game_object_id, mesh_id));
+                }
+            } else {
+                self.meshes.insert((x, y, z), (game_object_id, mesh_id));
+            }
         }
 
         let gen_tasks = self.generator.task_count();
@@ -257,14 +274,6 @@ impl ChunkLoader {
         if gen_tasks > 0 || mesh_tasks > 0 || db_pending > 0 {
             println!("world gen: {gen_tasks} | mesh build: {mesh_tasks} | db load: {db_pending}");
         }
-    }
-
-    pub fn get_chunk(&mut self, x: i32, y: i32, z: i32) -> Option<&mut Chunk> {
-        self.loaded_chunks.get_mut(&(x, y, z))
-    }
-
-    pub fn get_chunks(&mut self) -> Vec<&mut Chunk> {
-        self.loaded_chunks.values_mut().collect()
     }
 
     fn generate_chunk(&mut self, x: i32, y: i32, z: i32) {
@@ -279,6 +288,22 @@ impl ChunkLoader {
         let [x, y, z] = chunk.pos;
         self.loaded_chunks.insert((x, y, z), chunk);
 
+        for dx in 0..=1i32 {
+            for dy in 0..=1i32 {
+                for dz in 0..=1i32 {
+                    self.invoke_mesh_generation(x + dx, y + dy, z + dz);
+                }
+            }
+        }
+    }
+
+    // Invoke mesh generation for a chunk,
+    // TODO: only invoke if no neighbor chunks are still generating or loading from the database.
+    fn invoke_mesh_generation(&mut self, x: i32, y: i32, z: i32) {
+        if self.loaded_chunks.get(&(x, y, z)).is_none() {
+            return;
+        }
+
         let mut voxels = marching_cubes::Voxels::new();
         for dx in 0..=1i32 {
             for dy in 0..=1i32 {
@@ -290,8 +315,11 @@ impl ChunkLoader {
                 }
             }
         }
+
+        let mesh_count = self.mesh_count;
+        self.mesh_count += 1;
         self.mesh_builder
-            .add_task(move || voxels.get_chunk_mesh([x, y, z]));
+            .add_task(move || (voxels.get_chunk_mesh([x, y, z]), mesh_count));
     }
 }
 
