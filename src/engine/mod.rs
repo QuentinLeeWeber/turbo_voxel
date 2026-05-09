@@ -19,6 +19,7 @@ use winit::{
 
 pub mod camera;
 mod chunk_loader;
+mod db_worker;
 pub mod marching_cubes;
 mod marching_cubes_data;
 mod perlin_noise;
