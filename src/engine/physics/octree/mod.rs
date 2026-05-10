@@ -115,7 +115,7 @@ impl PosInParent {
             5 => Some(PosInParent::X1Y0Z1),
             6 => Some(PosInParent::X0Y1Z1),
             7 => Some(PosInParent::X1Y1Z1),
-            _ => unreachable!("child array too long"),
+            _ => None,
         }
     }
     fn get_idx(&self, parent_idx: u64) -> u64 {
