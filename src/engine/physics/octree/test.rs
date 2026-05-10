@@ -77,5 +77,14 @@ mod pos_in_parent {
          * | 4 | 5 |
          * |___|___|
          */
+        assert_eq!(PosInParent::from_u32(0).unwrap(), PosInParent::X0Y0Z0);
+        assert_eq!(PosInParent::from_u32(1).unwrap(), PosInParent::X1Y0Z0);
+        assert_eq!(PosInParent::from_u32(2).unwrap(), PosInParent::X0Y1Z0);
+        assert_eq!(PosInParent::from_u32(3).unwrap(), PosInParent::X1Y1Z0);
+        assert_eq!(PosInParent::from_u32(4).unwrap(), PosInParent::X0Y0Z1);
+        assert_eq!(PosInParent::from_u32(5).unwrap(), PosInParent::X1Y0Z1);
+        assert_eq!(PosInParent::from_u32(6).unwrap(), PosInParent::X0Y1Z1);
+        assert_eq!(PosInParent::from_u32(7).unwrap(), PosInParent::X1Y1Z1);
+        assert_eq!(PosInParent::from_u32(8), None);
     }
 }
