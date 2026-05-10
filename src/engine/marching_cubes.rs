@@ -1,8 +1,6 @@
+use super::{Chunk, Material, marching_cubes_data::*};
+use crate::engine::renderer::prelude::{MeshData, VertexData};
 use std::{collections::HashMap, vec::Vec};
-
-use crate::engine::renderer::prelude::VertexData;
-
-use super::{CHUNK_WIDTH, Chunk, Material, marching_cubes_data::*};
 
 pub struct Voxels {
     pub chunks: HashMap<[i32; 3], Chunk>,
@@ -40,12 +38,6 @@ impl Voxels {
         self.chunks.remove(&pos)
     }
 
-    pub fn new_chunk(&mut self, pos: [i32; 3]) -> &mut Chunk {
-        let chunk = Chunk::new(pos);
-        self.insert_chunk(chunk);
-        self.get_mut_chunk(pos)
-    }
-
     pub fn get_chunk_mesh(&self, pos: [i32; 3]) -> Mesh {
         let chunk = &self.chunks[&pos];
 
@@ -54,39 +46,31 @@ impl Voxels {
 }
 
 impl Chunk {
-    pub fn new(pos: [i32; 3]) -> Self {
-        Self {
-            pos,
-            amount: Box::new([[[0.0; CHUNK_WIDTH]; CHUNK_WIDTH]; CHUNK_WIDTH]),
-            materials: Box::new([[[Material::default(); CHUNK_WIDTH]; CHUNK_WIDTH]; CHUNK_WIDTH]),
-        }
-    }
-
     pub fn get_voxel(&self, voxels: &Voxels, x: usize, y: usize, z: usize) -> f32 {
         // Fast path: coordinates are within this chunk
-        if x < CHUNK_WIDTH && y < CHUNK_WIDTH && z < CHUNK_WIDTH {
+        if x < Self::WIDTH && y < Self::WIDTH && z < Self::WIDTH {
             return self.amount[x][y][z];
         }
 
         // Compute which chunk the coordinates fall into
-        let chunk_x = (x / CHUNK_WIDTH) as i32 + self.pos[0];
-        let chunk_y = (y / CHUNK_WIDTH) as i32 + self.pos[1];
-        let chunk_z = (z / CHUNK_WIDTH) as i32 + self.pos[2];
+        let chunk_x = (x / Self::WIDTH) as i32 + self.pos[0];
+        let chunk_y = (y / Self::WIDTH) as i32 + self.pos[1];
+        let chunk_z = (z / Self::WIDTH) as i32 + self.pos[2];
 
         let idx = [chunk_x, chunk_y, chunk_z];
 
         if let Some(chunk) = voxels.chunks.get(&idx) {
             // Access directly without recursion to avoid stack overflow
-            let lx = x % CHUNK_WIDTH;
-            let ly = y % CHUNK_WIDTH;
-            let lz = z % CHUNK_WIDTH;
+            let lx = x % Self::WIDTH;
+            let ly = y % Self::WIDTH;
+            let lz = z % Self::WIDTH;
             return chunk.amount[lx][ly][lz];
         }
 
-        // Neighbour chunk doesn't exist – clamp to this chunk's border
-        let cx = x.min(CHUNK_WIDTH - 1);
-        let cy = y.min(CHUNK_WIDTH - 1);
-        let cz = z.min(CHUNK_WIDTH - 1);
+        // Neighbor chunk doesn't exist – clamp to this chunk's border
+        let cx = x.min(Self::WIDTH - 1);
+        let cy = y.min(Self::WIDTH - 1);
+        let cz = z.min(Self::WIDTH - 1);
         self.amount[cx][cy][cz]
     }
 
@@ -152,9 +136,9 @@ impl Chunk {
     pub fn get_mesh(&self, voxels: &Voxels) -> Mesh {
         let mut mesh = Mesh::new();
 
-        for z in 0..CHUNK_WIDTH {
-            for y in 0..CHUNK_WIDTH {
-                for x in 0..CHUNK_WIDTH {
+        for z in 0..Chunk::WIDTH {
+            for y in 0..Chunk::WIDTH {
+                for x in 0..Chunk::WIDTH {
                     let idx = self.get_table_idx(voxels, x, y, z);
                     let case = &TRIANGLE_TABLE[idx as usize];
 
@@ -186,9 +170,9 @@ impl Chunk {
             }
         }
 
-        smooth_mesh_laplacian(&mut mesh, 2);
-
+        //smooth_mesh_laplacian(&mut mesh, 2);
         compute_normals(&mut mesh);
+        mesh.pos = self.pos;
 
         mesh
     }
@@ -323,7 +307,6 @@ pub fn edge_idx_to_point_coord(
         p2[2] as usize + pos[2],
     );
 
-    // Corrected lerp: t is the fraction along p1->p2 where the isosurface crosses zero.
     let t = val1 / (val1 - val2);
 
     [
@@ -333,7 +316,7 @@ pub fn edge_idx_to_point_coord(
     ]
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct Vertex {
     pub pos: [f32; 3],
     pub normal: [f32; 3],
@@ -348,7 +331,7 @@ impl Vertex {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct Face {
     pub points: [usize; 3],
 }
@@ -364,6 +347,7 @@ pub struct Mesh {
     pub vertices: Vec<Vertex>,
     pub faces: Vec<Face>,
     pub hashed_points: HashMap<[isize; 4], usize>,
+    pub pos: [i32; 3],
 }
 
 impl Mesh {
@@ -372,6 +356,7 @@ impl Mesh {
             vertices: Vec::new(),
             faces: Vec::new(),
             hashed_points: HashMap::new(),
+            pos: [0, 0, 0],
         }
     }
 
@@ -382,9 +367,9 @@ impl Mesh {
     }
 }
 
-impl From<Mesh> for crate::engine::renderer::prelude::MeshData {
+impl From<Mesh> for MeshData {
     fn from(val: Mesh) -> Self {
-        let vertices: Vec<crate::engine::renderer::prelude::VertexData> = val
+        let vertices: Vec<VertexData> = val
             .vertices
             .into_iter()
             .map(|v| VertexData::new(v.pos, v.normal))
@@ -397,10 +382,134 @@ impl From<Mesh> for crate::engine::renderer::prelude::MeshData {
             .flat_map(|(a, b, c)| [a, b, c])
             .collect();
 
-        crate::engine::renderer::prelude::MeshData {
+        MeshData {
             vertices,
             indices,
             material_id: 0,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::engine::world_gen::generate_chunk;
+
+    fn build_mesh_with_neighbors(chunk_pos: [i32; 3]) -> Mesh {
+        let [x, y, z] = chunk_pos;
+        let mut voxels = Voxels::new();
+        for (dx, dy, dz) in [
+            (0, 0, 0),
+            (1, 0, 0),
+            (0, 1, 0),
+            (0, 0, 1),
+            (1, 1, 0),
+            (1, 0, 1),
+            (0, 1, 1),
+            (1, 1, 1),
+        ] {
+            voxels.insert_chunk(generate_chunk(x + dx, y + dy, z + dz));
+        }
+        voxels.get_chunk_mesh(chunk_pos)
+    }
+
+    #[test]
+    fn test_mesh_difference_with_world_gen() {
+        let mut voxels = Voxels::new();
+        voxels.insert_chunk(generate_chunk(0, 0, 0));
+        voxels.insert_chunk(generate_chunk(0, 0, 1));
+
+        let mesh1 = voxels.get_chunk_mesh([0, 0, 0]);
+        let mesh2 = voxels.get_chunk_mesh([0, 0, 1]);
+
+        assert!(!mesh1.faces.is_empty());
+        assert!(!mesh2.faces.is_empty());
+        assert!(mesh1.faces != mesh2.faces);
+        assert!(mesh1.vertices != mesh2.vertices);
+    }
+
+    #[test]
+    fn test_mesh_nonempty_at_terrain_and_empty_above() {
+        let mut voxels_ground = Voxels::new();
+        voxels_ground.insert_chunk(generate_chunk(0, 0, 0));
+        let mesh_ground = voxels_ground.get_chunk_mesh([0, 0, 0]);
+        assert!(!mesh_ground.faces.is_empty());
+
+        let mut voxels_sky = Voxels::new();
+        voxels_sky.insert_chunk(generate_chunk(0, 1, 0));
+        let mesh_sky = voxels_sky.get_chunk_mesh([0, 1, 0]);
+        assert!(mesh_sky.faces.is_empty());
+    }
+
+    #[test]
+    fn test_chunk_seamless_transition_x() {
+        assert!(false, "i think this test should fail, but it doesn't");
+
+        let mesh_a = build_mesh_with_neighbors([0, 0, 0]);
+        let mesh_b = build_mesh_with_neighbors([1, 0, 0]);
+
+        let width = Chunk::WIDTH as f32;
+        let eps = 1e-3;
+
+        let border_a: Vec<[f32; 3]> = mesh_a
+            .vertices
+            .iter()
+            .map(|v| v.pos)
+            .filter(|p| (p[0] - width).abs() < eps)
+            .collect();
+
+        let border_b: Vec<[f32; 3]> = mesh_b
+            .vertices
+            .iter()
+            .map(|v| [v.pos[0] + width, v.pos[1], v.pos[2]])
+            .filter(|p| (p[0] - width).abs() < eps)
+            .collect();
+
+        assert!(!border_a.is_empty());
+        assert!(!border_b.is_empty());
+
+        for a in &border_a {
+            let found_close_vertex = border_b.iter().any(|b| {
+                (a[0] - b[0]).abs() < eps && (a[1] - b[1]).abs() < eps && (a[2] - b[2]).abs() < eps
+            });
+
+            assert!(found_close_vertex);
+        }
+    }
+
+    #[test]
+    fn test_chunk_seamless_transition_z() {
+        assert!(false, "i think this test should fail, but it doesn't");
+
+        let mesh_a = build_mesh_with_neighbors([0, 0, 0]);
+        let mesh_b = build_mesh_with_neighbors([0, 0, 1]);
+
+        let width = Chunk::WIDTH as f32;
+        let eps = 1e-3;
+
+        let border_a: Vec<[f32; 3]> = mesh_a
+            .vertices
+            .iter()
+            .map(|v| v.pos)
+            .filter(|p| (p[2] - width).abs() < eps)
+            .collect();
+
+        let border_b: Vec<[f32; 3]> = mesh_b
+            .vertices
+            .iter()
+            .map(|v| [v.pos[0], v.pos[1], v.pos[2] + width])
+            .filter(|p| (p[2] - width).abs() < eps)
+            .collect();
+
+        assert!(!border_a.is_empty());
+        assert!(!border_b.is_empty());
+
+        for a in &border_a {
+            let found_close_vertex = border_b.iter().any(|b| {
+                (a[0] - b[0]).abs() < eps && (a[1] - b[1]).abs() < eps && (a[2] - b[2]).abs() < eps
+            });
+
+            assert!(found_close_vertex);
         }
     }
 }

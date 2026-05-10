@@ -105,6 +105,8 @@ fn random_grad(x: i32, y: i32, seed: u32) -> [f32; 2] {
 
 #[cfg(test)]
 mod tests {
+    use crate::engine::world_gen::generate_chunk;
+
     use super::*;
 
     #[test]
@@ -230,5 +232,119 @@ mod tests {
         for &val in &corner[1..] {
             assert!((corner[0] - val).abs() < eps,);
         }
+    }
+
+    #[test]
+    fn test_chunk_difference() {
+        let seed = 123456;
+        let gradient_spacing = 16;
+        let chunk_width = 64;
+        let w = chunk_width as i32;
+        let eps = 1e-5;
+
+        let new_noise = |ox, oy| {
+            PerlinNoise::new(PerlinNoiseParams {
+                seed,
+                chunk_x: ox,
+                chunk_y: oy,
+                gradient_spacing,
+                chunk_width,
+            })
+        };
+
+        let n0 = new_noise(0, 0);
+        let n1 = new_noise(-1, 0);
+
+        let mut is_equal = true;
+        for x in 0..=w {
+            for y in 0..=w {
+                if (n1.noise(x, y) - n0.noise(x, y)).abs() > eps {
+                    is_equal = false;
+                }
+            }
+        }
+        assert!(!is_equal);
+    }
+
+    // Run with: cargo test debug_perlin_noise_image -- --nocapture
+    #[test]
+    fn debug_perlin_noise_image() {
+        use image::{ImageBuffer, Rgb};
+        use std::fs;
+
+        const CHUNKS_X: usize = 4;
+        const CHUNKS_Y: usize = 4;
+        const CHUNK_WIDTH: usize = 64;
+        const GRADIENT_SPACING: u32 = 32;
+        const SEED: u32 = 42;
+        const BORDER_PX: usize = 2;
+
+        let img_w = CHUNKS_X * CHUNK_WIDTH + (CHUNKS_X - 1) * BORDER_PX;
+        let img_h = CHUNKS_Y * CHUNK_WIDTH + (CHUNKS_Y - 1) * BORDER_PX;
+
+        let mut chunks: Vec<Vec<Vec<f32>>> = Vec::with_capacity(CHUNKS_X * CHUNKS_Y);
+        let mut min_val = f32::MAX;
+        let mut max_val = f32::MIN;
+
+        for cy in 0..CHUNKS_Y {
+            for cx in 0..CHUNKS_X {
+                let noise = PerlinNoise::new(PerlinNoiseParams {
+                    seed: SEED,
+                    chunk_x: cx as i32,
+                    chunk_y: cy as i32,
+                    gradient_spacing: GRADIENT_SPACING,
+                    chunk_width: CHUNK_WIDTH as u32,
+                });
+
+                let mut vals = vec![vec![0.0f32; CHUNK_WIDTH]; CHUNK_WIDTH];
+                for x in 0..CHUNK_WIDTH {
+                    for y in 0..CHUNK_WIDTH {
+                        let v = noise.noise(x as i32, y as i32);
+                        vals[x][y] = v;
+                        if v < min_val {
+                            min_val = v;
+                        }
+                        if v > max_val {
+                            max_val = v;
+                        }
+                    }
+                }
+                chunks.push(vals);
+            }
+        }
+
+        let range = (max_val - min_val).max(1e-6);
+        let border_color = Rgb([255u8, 0u8, 0u8]);
+        let mut img: ImageBuffer<Rgb<u8>, Vec<u8>> =
+            ImageBuffer::from_pixel(img_w as u32, img_h as u32, border_color);
+
+        for cy in 0..CHUNKS_Y {
+            for cx in 0..CHUNKS_X {
+                let ox = cx * (CHUNK_WIDTH + BORDER_PX);
+                let oy = cy * (CHUNK_WIDTH + BORDER_PX);
+                let vals = &chunks[cy * CHUNKS_X + cx];
+
+                for x in 0..CHUNK_WIDTH {
+                    for y in 0..CHUNK_WIDTH {
+                        let v = vals[x][y];
+                        let byte = ((v - min_val) / range * 255.0) as u8;
+                        img.put_pixel((ox + x) as u32, (oy + y) as u32, Rgb([byte, byte, byte]));
+                    }
+                }
+            }
+        }
+
+        fs::create_dir_all("test_output").expect("Could not create test_output/");
+        img.save("test_output/debug_perlin_noise.png")
+            .expect("Failed to save test_output/debug_perlin_noise.png");
+    }
+
+    #[test]
+    fn test_chunk_coordinates() {
+        let chunk = generate_chunk(0, 0, 0);
+        assert_eq!(chunk.pos, [0, 0, 0]);
+
+        let chunk2 = generate_chunk(-1, 3, 43);
+        assert_eq!(chunk2.pos, [-1, 3, 43]);
     }
 }

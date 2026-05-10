@@ -1,8 +1,12 @@
 mod engine;
 mod game_object;
 mod hit_box;
+mod prelude;
 
-use crate::{engine::marching_cubes, game_object::Transform};
+use crate::{
+    engine::{Chunk, marching_cubes},
+    game_object::Transform,
+};
 use cgmath::{Deg, Quaternion, Rad, Rotation3};
 use engine::{Engine, renderer::prelude::*};
 use rayon::prelude::*;
@@ -55,35 +59,35 @@ fn main() {
 
     let mut engine = Engine::new(&event_loop);
 
-    println!("pre engine");
+    // let chunks: Vec<_> = (-1..2)
+    //     .into_par_iter()
+    //     .flat_map(|x| {
+    //         (-1..2).into_par_iter().flat_map(move |y| {
+    //             (-1..2).into_par_iter().map(move |z| {
+    //                 let chunk = engine::world_gen::generate_chunk(x, y, z);
+    //                 ((x, y, z), chunk) // Wir geben die Position mit zurück
+    //             })
+    //         })
+    //     })
+    //     .collect();
 
-    let chunks: Vec<_> = (-1..2)
-        .into_par_iter()
-        .flat_map(|x| {
-            (-1..2).into_par_iter().flat_map(move |y| {
-                (-1..2).into_par_iter().map(move |z| {
-                    let chunk = engine::world_gen::generate_chunk(x, y, z);
-                    ((x, y, z), chunk) // Wir geben die Position mit zurück
-                })
-            })
-        })
-        .collect();
+    // let mut voxels = marching_cubes::Voxels::new();
+    // for (_pos, chunk) in chunks {
+    //     voxels.insert_chunk(chunk);
+    // }
 
-    let mut voxels = marching_cubes::Voxels::new();
-    for (_pos, chunk) in chunks {
-        voxels.insert_chunk(chunk);
-    }
+    // println!("pre mesh");
+    // let mesh = voxels.get_chunk_mesh([0, 0, 0]);
+    // println!("post mesh");
 
-    let mesh = voxels.get_chunk_mesh([0, 0, 0]);
-
-    struct ObjectData {}
-    game_object::GameObjectBuilder::<ObjectData>::new(ObjectData {})
-        .with_transform(Transform {
-            pos: [0.0, 0.0, 0.0].into(),
-            rot: Quaternion::from_angle_x(Rad::from(Deg(90.0))),
-        })
-        .with_mesh(mesh.into())
-        .build(&mut engine);
+    // struct ObjectData {}
+    // game_object::GameObjectBuilder::<ObjectData>::new(ObjectData {})
+    //     .with_transform(Transform {
+    //         pos: [0.0, 0.0, 0.0].into(),
+    //         rot: Quaternion::from_angle_x(Rad::from(Deg(90.0))),
+    //     })
+    //     .with_mesh(mesh.into())
+    //     .build(&mut engine);
 
     event_loop.set_control_flow(winit::event_loop::ControlFlow::Poll);
     event_loop.run_app(&mut engine).unwrap();

@@ -193,6 +193,7 @@ impl Renderer {
             //erstelle meshBufferMapping
             let data = self.mesh_data.get(&mesh).unwrap();
 
+            //für jedes Mesh IndirectDrawCommand
             let command = DrawIndexedIndirectCommand {
                 index_count: data.indices.len() as u32,
                 instance_count: mesh_instances.len() as u32,
@@ -206,6 +207,10 @@ impl Renderer {
             index_buffer.append(&mut data.indices.clone());
             commands.push(command);
             instance_data.append(&mut mesh_instances);
+        }
+
+        if vertex_bufer.is_empty() || index_buffer.is_empty() || instance_data.is_empty() {
+            return;
         }
 
         self.recreate_index_buffer(&index_buffer);
