@@ -25,7 +25,32 @@ mod octree_node {
                 OctreeNode::get_idx_pos_in_parent(children[1]).unwrap(),
                 PosInParent::X1Y0Z0
             );
+            assert_eq!(
+                OctreeNode::get_idx_pos_in_parent(children[2]).unwrap(),
+                PosInParent::X0Y1Z0
+            );
+            assert_eq!(
+                OctreeNode::get_idx_pos_in_parent(children[3]).unwrap(),
+                PosInParent::X1Y1Z0
+            );
+            assert_eq!(
+                OctreeNode::get_idx_pos_in_parent(children[4]).unwrap(),
+                PosInParent::X0Y0Z1
+            );
+            assert_eq!(
+                OctreeNode::get_idx_pos_in_parent(children[5]).unwrap(),
+                PosInParent::X1Y0Z1
+            );
+            assert_eq!(
+                OctreeNode::get_idx_pos_in_parent(children[6]).unwrap(),
+                PosInParent::X0Y1Z1
+            );
+            assert_eq!(
+                OctreeNode::get_idx_pos_in_parent(children[7]).unwrap(),
+                PosInParent::X1Y1Z1
+            );
         }
+        assert_eq!(OctreeNode::get_idx_pos_in_parent(0), None);
     }
 }
 #[cfg(test)]
