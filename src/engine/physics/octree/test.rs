@@ -87,4 +87,70 @@ mod pos_in_parent {
         assert_eq!(PosInParent::from_u32(7).unwrap(), PosInParent::X1Y1Z1);
         assert_eq!(PosInParent::from_u32(8), None);
     }
+    #[test]
+    fn from_bools_test() {
+        assert_eq!(
+            PosInParent::from_bools(true, true, true),
+            PosInParent::X0Y0Z0
+        );
+        assert_eq!(
+            PosInParent::from_bools(false, true, true),
+            PosInParent::X1Y0Z0
+        );
+        assert_eq!(
+            PosInParent::from_bools(true, false, true),
+            PosInParent::X0Y1Z0
+        );
+        assert_eq!(
+            PosInParent::from_bools(false, false, true),
+            PosInParent::X1Y1Z0
+        );
+        assert_eq!(
+            PosInParent::from_bools(true, true, false),
+            PosInParent::X0Y0Z1
+        );
+        assert_eq!(
+            PosInParent::from_bools(false, true, false),
+            PosInParent::X1Y0Z1
+        );
+        assert_eq!(
+            PosInParent::from_bools(true, false, false),
+            PosInParent::X0Y1Z1
+        );
+        assert_eq!(
+            PosInParent::from_bools(false, false, false),
+            PosInParent::X1Y1Z1
+        );
+    }
+    fn pos_in_parent_consistency(pos_in_parent: PosInParent) -> bool {
+        return pos_in_parent
+            == PosInParent::from_bools(
+                pos_in_parent.in_lower_x_half(),
+                pos_in_parent.in_lower_y_half(),
+                pos_in_parent.in_lower_z_half(),
+            );
+    }
+    #[test]
+    fn consistency_bools() {
+        assert!(pos_in_parent_consistency(PosInParent::X0Y0Z0));
+        assert!(pos_in_parent_consistency(PosInParent::X1Y0Z0));
+        assert!(pos_in_parent_consistency(PosInParent::X0Y1Z0));
+        assert!(pos_in_parent_consistency(PosInParent::X1Y1Z0));
+        assert!(pos_in_parent_consistency(PosInParent::X0Y0Z1));
+        assert!(pos_in_parent_consistency(PosInParent::X1Y0Z1));
+        assert!(pos_in_parent_consistency(PosInParent::X0Y1Z1));
+        assert!(pos_in_parent_consistency(PosInParent::X1Y1Z1));
+    }
+    #[test]
+    fn get_idx_correctness() {
+        for i in 0..10000 {
+            let children = OctreeNode::get_idx_children(i);
+            for child in children {
+                assert_eq!(
+                    OctreeNode::get_idx_pos_in_parent(child).unwrap().get_idx(i),
+                    child
+                );
+            }
+        }
+    }
 }
