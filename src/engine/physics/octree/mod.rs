@@ -53,7 +53,6 @@ impl Octree {
         self.nodes.insert(
             idx,
             OctreeNode::from_pos_in_parent(
-                idx,
                 &OctreeNode::get_idx_pos_in_parent(idx).unwrap(),
                 &self.nodes[&OctreeNode::get_idx_parent(idx).unwrap()],
             ),
@@ -140,9 +139,9 @@ struct OctreeNode {
 }
 
 impl OctreeNode {
-    pub fn from_pos_in_parent(idx: u64, pos_in_parent: &PosInParent, parent: &OctreeNode) -> Self {
+    pub fn from_pos_in_parent(pos_in_parent: &PosInParent, parent: &OctreeNode) -> Self {
         Self {
-            index: idx,
+            index: pos_in_parent.get_idx(parent.index),
             x: CoordinateBorders::from_parent(&parent.x, pos_in_parent.in_lower_x_half()),
             y: CoordinateBorders::from_parent(&parent.y, pos_in_parent.in_lower_y_half()),
             z: CoordinateBorders::from_parent(&parent.z, pos_in_parent.in_lower_z_half()),
