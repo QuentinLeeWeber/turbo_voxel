@@ -52,6 +52,112 @@ mod octree_node {
         }
         assert_eq!(OctreeNode::get_idx_pos_in_parent(0), None);
     }
+    #[test]
+    fn from_pos_in_parent() {
+        let parent = OctreeNode {
+            index: 0,
+            x: CoordinateBorders::new(0., 100.),
+            y: CoordinateBorders::new(0., 100.),
+            z: CoordinateBorders::new(0., 100.),
+        };
+        let child = OctreeNode::from_pos_in_parent(&PosInParent::X0Y0Z0, &parent);
+        assert_eq!(child.index, 1);
+        assert_eq!(child.x.lower, 0.);
+        assert_eq!(child.x.upper, 50.);
+        assert_eq!(child.y.lower, 0.);
+        assert_eq!(child.y.upper, 50.);
+        assert_eq!(child.z.lower, 0.);
+        assert_eq!(child.z.upper, 50.);
+        let child = OctreeNode::from_pos_in_parent(&PosInParent::X1Y0Z0, &parent);
+        assert_eq!(child.index, 2);
+        assert_eq!(child.x.lower, 50.);
+        assert_eq!(child.x.upper, 100.);
+        assert_eq!(child.y.lower, 0.);
+        assert_eq!(child.y.upper, 50.);
+        assert_eq!(child.z.lower, 0.);
+        assert_eq!(child.z.upper, 50.);
+        let child = OctreeNode::from_pos_in_parent(&PosInParent::X0Y1Z0, &parent);
+        assert_eq!(child.index, 3);
+        assert_eq!(child.x.lower, 0.);
+        assert_eq!(child.x.upper, 50.);
+        assert_eq!(child.y.lower, 50.);
+        assert_eq!(child.y.upper, 100.);
+        assert_eq!(child.z.lower, 0.);
+        assert_eq!(child.z.upper, 50.);
+        let child = OctreeNode::from_pos_in_parent(&PosInParent::X1Y1Z0, &parent);
+        assert_eq!(child.index, 4);
+        assert_eq!(child.x.lower, 50.);
+        assert_eq!(child.x.upper, 100.);
+        assert_eq!(child.y.lower, 50.);
+        assert_eq!(child.y.upper, 100.);
+        assert_eq!(child.z.lower, 0.);
+        assert_eq!(child.z.upper, 50.);
+        let child = OctreeNode::from_pos_in_parent(&PosInParent::X0Y0Z1, &parent);
+        assert_eq!(child.index, 5);
+        assert_eq!(child.x.lower, 0.);
+        assert_eq!(child.x.upper, 50.);
+        assert_eq!(child.y.lower, 0.);
+        assert_eq!(child.y.upper, 50.);
+        assert_eq!(child.z.lower, 50.);
+        assert_eq!(child.z.upper, 100.);
+        let child = OctreeNode::from_pos_in_parent(&PosInParent::X1Y0Z1, &parent);
+        assert_eq!(child.index, 6);
+        assert_eq!(child.x.lower, 50.);
+        assert_eq!(child.x.upper, 100.);
+        assert_eq!(child.y.lower, 0.);
+        assert_eq!(child.y.upper, 50.);
+        assert_eq!(child.z.lower, 50.);
+        assert_eq!(child.z.upper, 100.);
+        let child = OctreeNode::from_pos_in_parent(&PosInParent::X0Y1Z1, &parent);
+        assert_eq!(child.index, 7);
+        assert_eq!(child.x.lower, 0.);
+        assert_eq!(child.x.upper, 50.);
+        assert_eq!(child.y.lower, 50.);
+        assert_eq!(child.y.upper, 100.);
+        assert_eq!(child.z.lower, 50.);
+        assert_eq!(child.z.upper, 100.);
+        let child = OctreeNode::from_pos_in_parent(&PosInParent::X1Y1Z1, &parent);
+        assert_eq!(child.index, 8);
+        assert_eq!(child.x.lower, 50.);
+        assert_eq!(child.x.upper, 100.);
+        assert_eq!(child.y.lower, 50.);
+        assert_eq!(child.y.upper, 100.);
+        assert_eq!(child.z.lower, 50.);
+        assert_eq!(child.z.upper, 100.);
+    }
+    #[test]
+    fn find_fitting_child() {
+        let parent = OctreeNode {
+            index: 0,
+            x: CoordinateBorders::new(0., 100.),
+            y: CoordinateBorders::new(0., 100.),
+            z: CoordinateBorders::new(0., 100.),
+        };
+        let non_fitting_bounding_box = BoundingBox {
+            x: CoordinateBorders::new(0., 101.),
+            y: CoordinateBorders::new(0., 101.),
+            z: CoordinateBorders::new(0., 101.),
+        };
+        assert_eq!(parent.find_fitting_child(&non_fitting_bounding_box), None);
+        let x0y0z0_fitting_bounding_box = BoundingBox {
+            x: CoordinateBorders::new(0., 49.),
+            y: CoordinateBorders::new(0., 49.),
+            z: CoordinateBorders::new(0., 49.),
+        };
+        assert_eq!(
+            parent.find_fitting_child(&x0y0z0_fitting_bounding_box),
+            Some(1)
+        );
+        let x1y0z0_fitting_bounding_box = BoundingBox {
+            x: CoordinateBorders::new(51., 99.),
+            y: CoordinateBorders::new(0., 49.),
+            z: CoordinateBorders::new(0., 49.),
+        };
+        assert_eq!(
+            parent.find_fitting_child(&x1y0z0_fitting_bounding_box),
+            Some(2)
+        );
+    }
 }
 #[cfg(test)]
 mod pos_in_parent {
