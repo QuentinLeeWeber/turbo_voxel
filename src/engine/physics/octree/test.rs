@@ -230,6 +230,26 @@ mod octree_node {
             z: CoordinateBorders::new(0., 100.),
         };
         assert_eq!(parent.find_fitting_child(&z_nonfitting_bounding_box), None);
+        let parent_without_children = OctreeNode {
+            index: u64::MAX / 8,
+            x: CoordinateBorders::new(0., 100.),
+            y: CoordinateBorders::new(0., 100.),
+            z: CoordinateBorders::new(0., 100.),
+        };
+        assert_eq!(
+            parent_without_children.find_fitting_child(&x1y1z1_fitting_bounding_box),
+            None
+        );
+        let highest_parent = OctreeNode {
+            index: u64::MAX / 8 - 1,
+            x: CoordinateBorders::new(0., 100.),
+            y: CoordinateBorders::new(0., 100.),
+            z: CoordinateBorders::new(0., 100.),
+        };
+        assert_eq!(
+            highest_parent.find_fitting_child(&x1y1z1_fitting_bounding_box),
+            Some((u64::MAX / 8 - 1) * 8 + 8)
+        );
     }
 }
 #[cfg(test)]
