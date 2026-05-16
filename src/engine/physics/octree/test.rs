@@ -157,6 +157,79 @@ mod octree_node {
             parent.find_fitting_child(&x1y0z0_fitting_bounding_box),
             Some(2)
         );
+        let x0y1z0_fitting_bounding_box = BoundingBox {
+            x: CoordinateBorders::new(0., 50.),
+            y: CoordinateBorders::new(75., 80.),
+            z: CoordinateBorders::new(0., 49.),
+        };
+        assert_eq!(
+            parent.find_fitting_child(&x0y1z0_fitting_bounding_box),
+            Some(3)
+        );
+        let x1y1z0_fitting_bounding_box = BoundingBox {
+            x: CoordinateBorders::new(50., 100.),
+            y: CoordinateBorders::new(75., 80.),
+            z: CoordinateBorders::new(0., 49.),
+        };
+        assert_eq!(
+            parent.find_fitting_child(&x1y1z0_fitting_bounding_box),
+            Some(4)
+        );
+        let x0y0z1_fitting_bounding_box = BoundingBox {
+            x: CoordinateBorders::new(0., 50.),
+            y: CoordinateBorders::new(0., 30.),
+            z: CoordinateBorders::new(50., 70.),
+        };
+        assert_eq!(
+            parent.find_fitting_child(&x0y0z1_fitting_bounding_box),
+            Some(5)
+        );
+        let x1y0z1_fitting_bounding_box = BoundingBox {
+            x: CoordinateBorders::new(50., 100.),
+            y: CoordinateBorders::new(45., 50.),
+            z: CoordinateBorders::new(51., 52.),
+        };
+        assert_eq!(
+            parent.find_fitting_child(&x1y0z1_fitting_bounding_box),
+            Some(6)
+        );
+        let x0y1z1_fitting_bounding_box = BoundingBox {
+            x: CoordinateBorders::new(0., 50.),
+            y: CoordinateBorders::new(75., 80.),
+            z: CoordinateBorders::new(99., 100.),
+        };
+        assert_eq!(
+            parent.find_fitting_child(&x0y1z1_fitting_bounding_box),
+            Some(7)
+        );
+        let x1y1z1_fitting_bounding_box = BoundingBox {
+            x: CoordinateBorders::new(50., 100.),
+            y: CoordinateBorders::new(75., 80.),
+            z: CoordinateBorders::new(90., 91.),
+        };
+        assert_eq!(
+            parent.find_fitting_child(&x1y1z1_fitting_bounding_box),
+            Some(8)
+        );
+
+        let x_nonfitting_bounding_box = BoundingBox {
+            x: CoordinateBorders::new(49., 51.),
+            y: CoordinateBorders::new(75., 80.),
+            z: CoordinateBorders::new(0., 49.),
+        };
+        assert_eq!(parent.find_fitting_child(&x_nonfitting_bounding_box), None);
+        let y_nonfitting_bounding_box = BoundingBox {
+            x: CoordinateBorders::new(49., 50.),
+            y: CoordinateBorders::new(30., 80.),
+            z: CoordinateBorders::new(0., 49.),
+        };
+        assert_eq!(parent.find_fitting_child(&y_nonfitting_bounding_box), None);
+        let z_nonfitting_bounding_box = BoundingBox {
+            x: CoordinateBorders::new(0., 50.),
+            y: CoordinateBorders::new(75., 80.),
+            z: CoordinateBorders::new(0., 100.),
+        };
+        assert_eq!(parent.find_fitting_child(&z_nonfitting_bounding_box), None);
     }
 }
 #[cfg(test)]
