@@ -1,6 +1,7 @@
 use crate::{
     engine::camera::{Camera, CameraController, Projection},
     game_object::{EndOfLife, GameObjectID, GameObjectTrait},
+    hit_box::HitBox,
 };
 use cgmath::{Deg, Point3, Rad};
 use std::{collections::HashMap, sync::Arc};
@@ -41,8 +42,22 @@ pub struct Chunk {
     pub amount: Box<[[[f32; CHUNK_WIDTH]; CHUNK_WIDTH]; CHUNK_WIDTH]>,
 }
 
+struct Transform {
+    pos: [f32; 3],
+    rot: [f32; 3],
+}
+
 enum Event {
-    SpawnObject(Box<dyn GameObjectTrait>),
+    SpawnObject(Box<dyn GameObject>),
+}
+
+trait GameObject {
+    fn get_id(&self) -> u32;
+    fn update(&mut self);
+    fn get_transform(&self) -> Transform;
+    fn get_hitbox(&self) -> HitBox;
+    fn notify(&mut self) -> Vec<Event>;
+    fn give_collision_info(&mut self, col_info: physics::ColInfo) -> ();
 }
 
 pub struct Engine {

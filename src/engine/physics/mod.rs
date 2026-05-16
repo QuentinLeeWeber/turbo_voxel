@@ -2,9 +2,10 @@ mod collision_detection;
 mod octree;
 mod test;
 use crate::{
-    engine::GameObjectTrait,
+    engine::GameObject,
     hit_box::{BoundingBox, HitBox},
 };
+use cgmath::Vector3;
 use octree::*;
 use std::collections::HashMap;
 
@@ -59,7 +60,7 @@ impl<'a> CollisionStack<'a> {
             return;
         }
         for (index, hit_box) in octree_elements.get(&node).unwrap() {
-            self.stack.push((node, (*index, hit_box)));
+            self.stack.push((node, (*index, &hit_box)));
         }
     }
 
@@ -68,11 +69,70 @@ impl<'a> CollisionStack<'a> {
             self.stack.pop();
         }
     }
+    fn collide_with_all(&mut self, index: usize, collisions: &mut HashMap<u32, ColData>) -> () {
+        if index >= self.stack.len() {
+            return;
+        }
+        let colliding_node: &(u32, &HitBox) = &self.stack[index].1;
+        for i in 0..self.stack.len() {
+            let cur_node: &(u32, &HitBox) = &self.stack[i].1;
+            if i == index || cur_node.0 == colliding_node.0 {
+                continue;
+            }
+            if collision_detection::check_collision(colliding_node.1, cur_node.1) {
+                if cur_node.0 != MESH_GAMEOBJECT_ID {
+                    let cur_collision_data: &mut ColData =
+                        collisions.entry(cur_node.0).or_insert(ColData::new());
+
+                    cur_collision_data.objects.push(colliding_node.0);
+                    cur_collision_data.directions.push(
+                        collision_detection::get_collision_direction(colliding_node.1, cur_node.1),
+                    );
+                }
+                if colliding_node.0 != MESH_GAMEOBJECT_ID {
+                    let colliding_node_collision_data: &mut ColData =
+                        collisions.entry(colliding_node.0).or_insert(ColData::new());
+
+                    colliding_node_collision_data.objects.push(cur_node.0);
+                    colliding_node_collision_data.directions.push(
+                        collision_detection::get_collision_direction(cur_node.1, colliding_node.1),
+                    );
+                }
+            }
+        }
+    }
+}
+
+pub struct ColData {
+    directions: Vec<Vector3<f32>>,
+    objects: Vec<u32>,
+}
+impl ColData {
+    pub fn new() -> Self {
+        Self {
+            directions: vec![],
+            objects: vec![],
+        }
+    }
+}
+
+impl Into<ColInfo> for ColData {
+    fn into(self) -> ColInfo {
+        ColInfo {
+            col_dir: self.directions.into_iter().sum(),
+            objects: self.objects,
+        }
+    }
+}
+
+pub struct ColInfo {
+    col_dir: Vector3<f32>,
+    objects: Vec<u32>,
 }
 
 const MESH_GAMEOBJECT_ID: u32 = u32::MAX;
 
-pub fn calculate_collisions(entities: &mut HashMap<u32, Box<dyn GameObjectTrait>>) {
+pub fn calculate_collisions(entities: &mut HashMap<u32, Box<dyn GameObject>>) -> () {
     let mut octree_elements: HashMap<u64, Vec<(u32, HitBox)>> = HashMap::new();
     let mut octree = Octree::new(
         CoordinateBorders {
@@ -88,20 +148,22 @@ pub fn calculate_collisions(entities: &mut HashMap<u32, Box<dyn GameObjectTrait>
             upper: 5000.,
         },
     );
-    for (index, entity) in entities {
+    for (index, entity) in &*entities {
         let hit_box = entity.get_hitbox();
         let key = octree.add_element(&hit_box);
         if key.is_none() {
             continue;
         }
         let key = key.unwrap();
-        octree_elements.entry(key).or_default();
+        if !octree_elements.contains_key(&key) {
+            octree_elements.insert(key, vec![]);
+        }
         octree_elements
             .get_mut(&key)
             .unwrap()
             .push((*index, hit_box));
     }
-    let _collisions: HashMap<u32, Vec<u32>> = HashMap::new();
+    let mut collisions: HashMap<u32, ColData> = HashMap::new();
     let mut stack: CollisionStack = CollisionStack::new();
     stack.add_node_elements(&octree_elements, 0);
     let mut prev_node: u64 = 0;
@@ -112,7 +174,22 @@ pub fn calculate_collisions(entities: &mut HashMap<u32, Box<dyn GameObjectTrait>
         } else {
             //step down the octree
             stack.add_node_elements(&octree_elements, node);
+            let mut cur_obj = stack.stack.len() - 1;
+            while stack.stack[cur_obj].0 == node {
+                if cur_obj > 0 {
+                    cur_obj -= 1;
+                    stack.collide_with_all(cur_obj, &mut collisions);
+                } else {
+                    break;
+                }
+            }
         }
         prev_node = node;
+    }
+    for (index, col_data) in collisions {
+        let game_obj_opt = entities.get_mut(&index);
+        if game_obj_opt.is_some() {
+            game_obj_opt.unwrap().give_collision_info(col_data.into());
+        }
     }
 }
