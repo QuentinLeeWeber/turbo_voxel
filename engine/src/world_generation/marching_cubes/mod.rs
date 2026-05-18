@@ -1,6 +1,9 @@
-use super::{Chunk, Material, marching_cubes_data::*};
-use crate::engine::renderer::prelude::{MeshData, VertexData};
+use super::Chunk;
+use crate::renderer::prelude::{MeshData, VertexData};
 use std::{collections::HashMap, vec::Vec};
+
+mod marching_cubes_data;
+use marching_cubes_data::*;
 
 pub struct Voxels {
     pub chunks: HashMap<[i32; 3], Chunk>,
@@ -26,16 +29,6 @@ impl Voxels {
     pub fn get_chunk(&self, pos: [i32; 3]) -> &Chunk {
         assert!(self.chunks.contains_key(&pos));
         &self.chunks[&pos]
-    }
-
-    pub fn get_mut_chunk(&mut self, pos: [i32; 3]) -> &mut Chunk {
-        assert!(self.chunks.contains_key(&pos));
-        self.chunks.get_mut(&pos).unwrap()
-    }
-
-    pub fn del_chunk(&mut self, pos: [i32; 3]) -> Option<Chunk> {
-        assert!(self.chunks.contains_key(&pos));
-        self.chunks.remove(&pos)
     }
 
     pub fn get_chunk_mesh(&self, pos: [i32; 3]) -> Mesh {
@@ -72,10 +65,6 @@ impl Chunk {
         let cy = y.min(Self::WIDTH - 1);
         let cz = z.min(Self::WIDTH - 1);
         self.amount[cx][cy][cz]
-    }
-
-    pub fn set_voxel(&mut self, x: usize, y: usize, z: usize, val: f32) {
-        self.amount[x][y][z] = val;
     }
 
     fn get_table_idx(&self, voxels: &Voxels, x: usize, y: usize, z: usize) -> u8 {
@@ -238,43 +227,6 @@ fn angle_weight(a: [f32; 3], b: [f32; 3]) -> f32 {
         .acos()
 }
 
-pub fn smooth_mesh_laplacian(mesh: &mut Mesh, iterations: usize) {
-    let vertex_count = mesh.vertices.len();
-    let mut neighbors: Vec<Vec<usize>> = vec![Vec::new(); vertex_count];
-
-    for face in &mesh.faces {
-        let [i0, i1, i2] = face.points;
-        for (a, b) in [(i0, i1), (i1, i2), (i2, i0), (i1, i0), (i2, i1), (i0, i2)] {
-            if !neighbors[a].contains(&b) {
-                neighbors[a].push(b);
-            }
-        }
-    }
-
-    let lambda = 0.5f32;
-
-    for _ in 0..iterations {
-        let old_positions: Vec<[f32; 3]> = mesh.vertices.iter().map(|v| v.pos).collect();
-
-        for (i, v) in mesh.vertices.iter_mut().enumerate() {
-            let nbrs = &neighbors[i];
-            if nbrs.is_empty() {
-                continue;
-            }
-            let mut avg = [0.0f32; 3];
-            for &n in nbrs {
-                avg[0] += old_positions[n][0];
-                avg[1] += old_positions[n][1];
-                avg[2] += old_positions[n][2];
-            }
-            let count = nbrs.len() as f32;
-            v.pos[0] = v.pos[0] * (1.0 - lambda) + (avg[0] / count) * lambda;
-            v.pos[1] = v.pos[1] * (1.0 - lambda) + (avg[1] / count) * lambda;
-            v.pos[2] = v.pos[2] * (1.0 - lambda) + (avg[2] / count) * lambda;
-        }
-    }
-}
-
 pub fn edge_idx_to_point_hash(idx: i8, _pos: [i32; 3], offset: [usize; 3]) -> [isize; 4] {
     let mut hash = EDGE_HASHMAP_DATA[idx as usize];
     hash[0] += offset[0] as isize;
@@ -359,12 +311,6 @@ impl Mesh {
             pos: [0, 0, 0],
         }
     }
-
-    pub fn clear(&mut self) {
-        self.vertices.clear();
-        self.faces.clear();
-        self.hashed_points.clear();
-    }
 }
 
 impl From<Mesh> for MeshData {
@@ -393,7 +339,7 @@ impl From<Mesh> for MeshData {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::engine::world_gen::generate_chunk;
+    use crate::world_generation::chunk_gen::generate;
 
     fn build_mesh_with_neighbors(chunk_pos: [i32; 3]) -> Mesh {
         let [x, y, z] = chunk_pos;
@@ -408,7 +354,7 @@ mod tests {
             (0, 1, 1),
             (1, 1, 1),
         ] {
-            voxels.insert_chunk(generate_chunk(x + dx, y + dy, z + dz));
+            voxels.insert_chunk(generate(x + dx, y + dy, z + dz));
         }
         voxels.get_chunk_mesh(chunk_pos)
     }
@@ -416,8 +362,8 @@ mod tests {
     #[test]
     fn test_mesh_difference_with_world_gen() {
         let mut voxels = Voxels::new();
-        voxels.insert_chunk(generate_chunk(0, 0, 0));
-        voxels.insert_chunk(generate_chunk(0, 0, 1));
+        voxels.insert_chunk(generate(0, 0, 0));
+        voxels.insert_chunk(generate(0, 0, 1));
 
         let mesh1 = voxels.get_chunk_mesh([0, 0, 0]);
         let mesh2 = voxels.get_chunk_mesh([0, 0, 1]);
@@ -431,12 +377,12 @@ mod tests {
     #[test]
     fn test_mesh_nonempty_at_terrain_and_empty_above() {
         let mut voxels_ground = Voxels::new();
-        voxels_ground.insert_chunk(generate_chunk(0, 0, 0));
+        voxels_ground.insert_chunk(generate(0, 0, 0));
         let mesh_ground = voxels_ground.get_chunk_mesh([0, 0, 0]);
         assert!(!mesh_ground.faces.is_empty());
 
         let mut voxels_sky = Voxels::new();
-        voxels_sky.insert_chunk(generate_chunk(0, 1, 0));
+        voxels_sky.insert_chunk(generate(0, 1, 0));
         let mesh_sky = voxels_sky.get_chunk_mesh([0, 1, 0]);
         assert!(mesh_sky.faces.is_empty());
     }

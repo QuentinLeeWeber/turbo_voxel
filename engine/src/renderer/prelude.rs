@@ -1,8 +1,6 @@
+use crate::renderer::{GameObjectID, ObjectDataID};
 use cgmath::Matrix4;
-
 use vulkano::{buffer::BufferContents, pipeline::graphics::vertex_input::Vertex};
-
-use crate::engine::renderer::{GameObjectID, ObjectDataID};
 
 /*
  * a low level object that can be loaded from a file

@@ -1,9 +1,11 @@
-use super::{Chunk, Material, perlin_noise::PerlinNoise};
-use crate::engine::perlin_noise::PerlinNoiseParams;
+use crate::chunk::{Chunk, Material};
 
 const PERLIN_SEED: u32 = 123456789;
 
-pub fn generate_chunk(x: i32, y: i32, z: i32) -> Chunk {
+mod perlin_noise;
+use perlin_noise::{PerlinNoise, PerlinNoiseParams};
+
+pub fn generate(x: i32, y: i32, z: i32) -> Chunk {
     let mut chunk = Chunk {
         pos: [x, y, z],
         materials: Chunk::alloc_materials(),
@@ -51,15 +53,6 @@ pub struct RigedNoiseParams {
     pub frequency_gain: f32,
     pub amplitude_gain: f32,
     pub chunk_width: u32,
-}
-
-fn gen_2d_range(
-    from1: usize,
-    to1: usize,
-    from2: usize,
-    to2: usize,
-) -> impl Iterator<Item = (usize, usize)> {
-    (from1..to1).flat_map(move |a| (from2..to2).map(move |b| (a, b)))
 }
 
 fn ridged_noise(params: RigedNoiseParams) -> Vec<Vec<f32>> {
@@ -183,8 +176,8 @@ mod tests {
             }
         }
 
-        fs::create_dir_all("test_output").expect("Could not create test_output/");
-        img.save("test_output/debug_ridged_noise.png")
+        fs::create_dir_all("../test_output").expect("Could not create test_output/");
+        img.save("../test_output/debug_ridged_noise.png")
             .expect("Failed to save test_output/debug_ridged_noise.png");
     }
 
@@ -349,13 +342,22 @@ mod tests {
 
     #[test]
     fn test_chunk_difference() {
-        let chunk_origin = generate_chunk(0, 0, 0);
-        let chunk_x = generate_chunk(1, 0, 0);
-        let chunk_z = generate_chunk(0, 0, 1);
+        let chunk_origin = generate(0, 0, 0);
+        let chunk_x = generate(1, 0, 0);
+        let chunk_z = generate(0, 0, 1);
         assert!(chunk_origin.amount != chunk_x.amount);
         assert!(chunk_origin.amount != chunk_z.amount);
 
-        let chunk_above = generate_chunk(0, 1, 0);
+        let chunk_above = generate(0, 1, 0);
         assert!(chunk_origin.amount != chunk_above.amount);
+    }
+
+    #[test]
+    fn test_chunk_coordinates() {
+        let chunk = generate(0, 0, 0);
+        assert_eq!(chunk.pos, [0, 0, 0]);
+
+        let chunk2 = generate(-1, 3, 43);
+        assert_eq!(chunk2.pos, [-1, 3, 43]);
     }
 }

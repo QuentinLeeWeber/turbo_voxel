@@ -1,8 +1,6 @@
-use crate::engine::physics::CoordinateBorders;
-use crate::game_object::Transform;
+use crate::{game_object::Transform, physics::CoordinateBorders};
 
 #[derive(Debug, Default, Clone, Copy)]
-
 pub enum HitBox {
     #[default]
     None,
@@ -24,6 +22,7 @@ pub enum HitBox {
         vec: [f32; 3],
     },
 }
+
 impl HitBox {
     pub fn get_bounding_box(&self) -> Option<BoundingBox> {
         match self {

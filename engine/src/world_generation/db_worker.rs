@@ -1,4 +1,4 @@
-use crate::engine::{Chunk, Material};
+use crate::chunk::{Chunk, Material};
 use anyhow::Result;
 use bincode_next::config::{self};
 use crossbeam::channel::{Sender, bounded, unbounded};
@@ -182,7 +182,7 @@ unsafe fn box_to_vec<T: Copy>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::engine::Material;
+    use crate::chunk::Material;
     use anyhow::Result;
     use bincode_next::config::standard;
     use rusqlite::Connection;

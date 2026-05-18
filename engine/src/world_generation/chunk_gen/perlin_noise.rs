@@ -105,8 +105,6 @@ fn random_grad(x: i32, y: i32, seed: u32) -> [f32; 2] {
 
 #[cfg(test)]
 mod tests {
-    use crate::engine::world_gen::generate_chunk;
-
     use super::*;
 
     #[test]
@@ -334,17 +332,8 @@ mod tests {
             }
         }
 
-        fs::create_dir_all("test_output").expect("Could not create test_output/");
-        img.save("test_output/debug_perlin_noise.png")
+        fs::create_dir_all("../test_output").expect("Could not create test_output/");
+        img.save("../test_output/debug_perlin_noise.png")
             .expect("Failed to save test_output/debug_perlin_noise.png");
-    }
-
-    #[test]
-    fn test_chunk_coordinates() {
-        let chunk = generate_chunk(0, 0, 0);
-        assert_eq!(chunk.pos, [0, 0, 0]);
-
-        let chunk2 = generate_chunk(-1, 3, 43);
-        assert_eq!(chunk2.pos, [-1, 3, 43]);
     }
 }

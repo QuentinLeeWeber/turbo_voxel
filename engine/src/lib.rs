@@ -1,15 +1,13 @@
-// use crate::{
-//     engine::{
-//         camera::{Camera, CameraController, Projection},
-//         chunk_loader::{ChunkLoader, ChunkLoaderSettings},
-//         renderer::Renderer,
-//     },
-//     game_object::{EndOfLife, GameObjectID, GameObjectTrait},
-//     hit_box::HitBox,
-// };
-use bincode_next::{Decode, Encode};
+use crate::{
+    game_object::{EndOfLife, GameObjectID, GameObjectTrait},
+    renderer::{
+        Renderer,
+        camera::{Camera, CameraController, Projection},
+    },
+    world_generation::{ChunkLoader, ChunkLoaderSettings},
+};
 use cgmath::{Deg, Point3, Rad};
-use std::{alloc, collections::HashMap, num::NonZero, sync::Arc};
+use std::{collections::HashMap, num::NonZero, sync::Arc};
 use winit::{
     application::ApplicationHandler,
     event::{DeviceEvent, ElementState, WindowEvent},
@@ -18,95 +16,19 @@ use winit::{
     window::{Window, WindowId},
 };
 
+mod chunk;
+pub mod game_object;
+mod physics;
+// This will probably stay here for quite some time, until Leon will fix his renderer
+#[allow(unused)]
 mod renderer;
 mod world_generation;
-
-// pub mod camera;
-// mod chunk_loader;
-// mod db_worker;
-// pub mod marching_cubes;
-// mod marching_cubes_data;
-// mod perlin_noise;
-// pub mod physics;
-// pub mod renderer;
-// mod scene;
-// mod thread_pool;
-// pub mod world_gen;
-
-#[derive(Clone, Copy, Debug, Default, Encode, Decode, PartialEq, Eq)]
-pub enum Material {
-    #[default]
-    Stone,
-    Dirt,
-    Grass,
-    Snow,
-    Sand,
-}
-
-#[derive(Debug, Clone)]
-pub struct Chunk {
-    pub pos: [i32; 3],
-    pub materials: Box<[[[Material; Self::WIDTH]; Self::WIDTH]; Self::WIDTH]>,
-    pub amount: Box<[[[f32; Self::WIDTH]; Self::WIDTH]; Self::WIDTH]>,
-}
-
-impl Chunk {
-    pub fn alloc_amount() -> Box<[[[f32; Self::WIDTH]; Self::WIDTH]; Self::WIDTH]> {
-        unsafe {
-            let layout = alloc::Layout::new::<[[[f32; Self::WIDTH]; Self::WIDTH]; Self::WIDTH]>();
-            let ptr = alloc::alloc_zeroed(layout)
-                as *mut [[[f32; Self::WIDTH]; Self::WIDTH]; Self::WIDTH];
-            Box::from_raw(ptr)
-        }
-    }
-
-    pub fn alloc_materials() -> Box<[[[Material; Self::WIDTH]; Self::WIDTH]; Self::WIDTH]> {
-        unsafe {
-            let layout =
-                alloc::Layout::new::<[[[Material; Self::WIDTH]; Self::WIDTH]; Self::WIDTH]>();
-            let ptr = alloc::alloc_zeroed(layout)
-                as *mut [[[Material; Self::WIDTH]; Self::WIDTH]; Self::WIDTH];
-            Box::from_raw(ptr)
-        }
-    }
-
-    #[cfg(test)]
-    pub fn stone_block(x: usize, y: usize, z: usize) -> Self {
-        Self {
-            pos: [x as i32, y as i32, z as i32],
-            materials: Self::alloc_materials(),
-            amount: Self::alloc_amount(),
-        }
-    }
-}
-
-impl Chunk {
-    pub const WIDTH: usize = 128;
-}
-
-struct Transform {
-    pos: [f32; 3],
-    rot: [f32; 3],
-}
-
-enum Event {
-    SpawnObject(Box<dyn GameObject>),
-}
-
-trait GameObject {
-    fn get_id(&self) -> u32;
-    fn update(&mut self);
-    fn get_transform(&self) -> Transform;
-    fn get_hitbox(&self) -> HitBox;
-    fn notify(&mut self) -> Vec<Event>;
-    fn give_collision_info(&mut self, col_info: physics::ColInfo) -> ();
-}
 
 pub struct Engine {
     camera: Camera,
     camera_controller: CameraController,
-    pub game_object_id_count: u32,
-    pub renderer: Renderer,
+    pub(crate) game_object_id_count: u32,
+    pub(crate) renderer: Renderer,
     scene: HashMap<GameObjectID, Box<dyn GameObjectTrait>>,
     chunk_loader: ChunkLoader,
 }

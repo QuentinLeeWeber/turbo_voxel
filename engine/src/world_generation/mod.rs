@@ -1,14 +1,7 @@
 use crate::{
-    engine::{
-        Chunk, Renderer,
-        db_worker::DbWorker,
-        marching_cubes::{self, Mesh},
-        renderer::prelude::InstanceData,
-        thread_pool::ThreadPool,
-        world_gen,
-    },
+    chunk::Chunk,
     game_object::GameObjectID,
-    prelude::*,
+    renderer::{Renderer, prelude::InstanceData},
 };
 use cgmath::{Deg, Quaternion, Rad, Rotation3};
 use crossbeam::channel::{Receiver, Sender, unbounded};
@@ -16,6 +9,16 @@ use std::{
     collections::{HashMap, HashSet},
     num::NonZero,
 };
+
+mod chunk_gen;
+mod db_worker;
+mod marching_cubes;
+mod prelude;
+mod thread_pool;
+
+use db_worker::DbWorker;
+use prelude::*;
+use thread_pool::ThreadPool;
 
 pub struct ChunkLoader {
     meshes: HashMap<(i32, i32, i32), (GameObjectID, i32)>,
@@ -28,7 +31,7 @@ pub struct ChunkLoader {
     db_load_tx: Sender<(i32, i32, i32, Option<Chunk>)>,
     db_load_rx: Receiver<(i32, i32, i32, Option<Chunk>)>,
     generator: ThreadPool<Chunk>,
-    mesh_builder: ThreadPool<(Mesh, i32)>,
+    mesh_builder: ThreadPool<(marching_cubes::Mesh, i32)>,
     mesh_count: i32,
 }
 
@@ -189,7 +192,7 @@ impl ChunkLoader {
 
     fn generate_chunk(&mut self, x: i32, y: i32, z: i32) {
         self.generator
-            .add_task(move || world_gen::generate_chunk(x, y, z));
+            .add_task(move || chunk_gen::generate(x, y, z));
         self.generating_chunks.insert((x, y, z));
     }
 

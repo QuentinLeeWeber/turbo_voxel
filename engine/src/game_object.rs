@@ -1,8 +1,8 @@
-use crate::engine::{
+use crate::{
     Engine,
+    physics::hit_box::HitBox,
     renderer::{ObjectDataID, prelude::*},
 };
-use crate::hit_box::HitBox;
 use cgmath::{Quaternion, Vector3, Zero};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

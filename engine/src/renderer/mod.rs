@@ -1,4 +1,3 @@
-use crate::engine::camera::{Camera, Projection};
 use crate::game_object::GameObjectID;
 use cgmath::{Deg, Point3, Rad};
 use std::collections::HashSet;
@@ -51,17 +50,19 @@ use winit::window::Window;
 mod vs {
     vulkano_shaders::shader!(
         ty: "vertex",
-        path: "src/engine/renderer/shaders/vertex_shader.glsl"
+        path: "src/renderer/shaders/vertex_shader.glsl"
     );
 }
-
 mod fs {
     vulkano_shaders::shader!(
         ty: "fragment",
-        path: "src/engine/renderer/shaders/fragment_shader.glsl"
+        path: "src/renderer/shaders/fragment_shader.glsl"
     );
 }
-pub mod prelude;
+pub(crate) mod camera;
+pub(crate) mod prelude;
+
+use camera::{Camera, Projection};
 use prelude::*;
 
 pub struct RenderData {

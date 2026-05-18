@@ -1,11 +1,11 @@
 mod collision_detection;
+pub(crate) mod hit_box;
 mod octree;
 mod test;
-use crate::{
-    engine::GameObject,
-    hit_box::{BoundingBox, HitBox},
-};
+
+use crate::game_object::GameObjectTrait;
 use cgmath::Vector3;
+use hit_box::{BoundingBox, HitBox};
 use octree::*;
 use std::collections::HashMap;
 
@@ -132,7 +132,7 @@ pub struct ColInfo {
 
 const MESH_GAMEOBJECT_ID: u32 = u32::MAX;
 
-pub fn calculate_collisions(entities: &mut HashMap<u32, Box<dyn GameObject>>) -> () {
+pub fn calculate_collisions(entities: &mut HashMap<u32, Box<dyn GameObjectTrait>>) -> () {
     let mut octree_elements: HashMap<u64, Vec<(u32, HitBox)>> = HashMap::new();
     let mut octree = Octree::new(
         CoordinateBorders {
@@ -186,10 +186,11 @@ pub fn calculate_collisions(entities: &mut HashMap<u32, Box<dyn GameObject>>) ->
         }
         prev_node = node;
     }
-    for (index, col_data) in collisions {
+    for (index, _col_data) in collisions {
         let game_obj_opt = entities.get_mut(&index);
         if game_obj_opt.is_some() {
-            game_obj_opt.unwrap().give_collision_info(col_data.into());
+            todo!("this is for later, when we do the engine api");
+            // game_obj_opt.unwrap().give_collision_info(col_data.into());
         }
     }
 }
