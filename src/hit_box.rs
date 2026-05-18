@@ -2,6 +2,7 @@ use crate::engine::physics::CoordinateBorders;
 use crate::game_object::Transform;
 
 #[derive(Debug, Default, Clone, Copy)]
+
 pub enum HitBox {
     #[default]
     None,
@@ -18,14 +19,11 @@ pub enum HitBox {
         point2: [f32; 3],
         point3: [f32; 3],
     },
+    Line {
+        point: [f32; 3],
+        vec: [f32; 3],
+    },
 }
-
-pub struct BoundingBox {
-    pub x: CoordinateBorders,
-    pub y: CoordinateBorders,
-    pub z: CoordinateBorders,
-}
-
 impl HitBox {
     pub fn get_bounding_box(&self) -> Option<BoundingBox> {
         match self {
@@ -69,6 +67,26 @@ impl HitBox {
                     z: CoordinateBorders::new(min_z, max_z),
                 })
             }
+            HitBox::Line { point, vec } => Some(BoundingBox {
+                x: CoordinateBorders::new(
+                    point[0].min(point[0] + vec[0]),
+                    point[0].max(point[0] + vec[0]),
+                ),
+                y: CoordinateBorders::new(
+                    point[1].min(point[1] + vec[1]),
+                    point[1].max(point[1] + vec[1]),
+                ),
+                z: CoordinateBorders::new(
+                    point[2].min(point[2] + vec[2]),
+                    point[2].max(point[2] + vec[2]),
+                ),
+            }),
         }
     }
+}
+
+pub struct BoundingBox {
+    pub x: CoordinateBorders,
+    pub y: CoordinateBorders,
+    pub z: CoordinateBorders,
 }

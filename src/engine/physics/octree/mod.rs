@@ -1,40 +1,8 @@
-use crate::{
-    engine::GameObjectTrait,
-    hit_box::{BoundingBox, HitBox},
-};
+mod test;
+use super::{BoundingBox, CoordinateBorders};
 use std::collections::HashMap;
 
-pub struct CoordinateBorders {
-    lower: f32,
-    upper: f32,
-}
-
-impl CoordinateBorders {
-    pub fn get_middle(&self) -> f32 {
-        (self.upper + self.lower) / 2.
-    }
-    pub fn new(lower: f32, upper: f32) -> Self {
-        Self { lower, upper }
-    }
-    pub fn from_parent(parent: &CoordinateBorders, lower_half: bool) -> Self {
-        if lower_half {
-            Self {
-                lower: parent.lower,
-                upper: parent.get_middle(),
-            }
-        } else {
-            Self {
-                lower: parent.get_middle(),
-                upper: parent.upper,
-            }
-        }
-    }
-    pub fn is_within(&self, other: &CoordinateBorders) -> bool {
-        self.lower >= other.lower && self.upper <= other.upper
-    }
-}
-
-struct Octree {
+pub struct Octree {
     nodes: HashMap<u64, OctreeNode>,
 }
 
@@ -60,12 +28,12 @@ impl Octree {
         }
         Some(cur_node.index)
     }
-    fn new(x: CoordinateBorders, y: CoordinateBorders, z: CoordinateBorders) -> Self {
+    pub fn new(x: CoordinateBorders, y: CoordinateBorders, z: CoordinateBorders) -> Self {
         Self {
             nodes: HashMap::from([(0, OctreeNode { index: 0, x, y, z })]),
         }
     }
-    fn insert_node(&mut self, idx: u64) {
+    pub fn insert_node(&mut self, idx: u64) {
         if idx == 0 {
             panic!("überschreib mal nicht die rootnode! (insert_node mit index 0)")
         }
@@ -85,7 +53,6 @@ impl Octree {
         self.nodes.insert(
             idx,
             OctreeNode::from_pos_in_parent(
-                idx,
                 &OctreeNode::get_idx_pos_in_parent(idx).unwrap(),
                 &self.nodes[&OctreeNode::get_idx_parent(idx).unwrap()],
             ),
@@ -93,14 +60,7 @@ impl Octree {
     }
 }
 
-struct OctreeNode {
-    index: u64,
-    x: CoordinateBorders,
-    y: CoordinateBorders,
-    z: CoordinateBorders,
-}
-
-#[derive(PartialEq, Eq)]
+#[derive(PartialEq, Eq, Debug)]
 enum PosInParent {
     X0Y0Z0,
     X1Y0Z0,
@@ -154,7 +114,7 @@ impl PosInParent {
             5 => Some(PosInParent::X1Y0Z1),
             6 => Some(PosInParent::X0Y1Z1),
             7 => Some(PosInParent::X1Y1Z1),
-            _ => unreachable!("child array too long"),
+            _ => None,
         }
     }
     fn get_idx(&self, parent_idx: u64) -> u64 {
@@ -171,10 +131,17 @@ impl PosInParent {
     }
 }
 
+struct OctreeNode {
+    index: u64,
+    x: CoordinateBorders,
+    y: CoordinateBorders,
+    z: CoordinateBorders,
+}
+
 impl OctreeNode {
-    pub fn from_pos_in_parent(idx: u64, pos_in_parent: &PosInParent, parent: &OctreeNode) -> Self {
+    pub fn from_pos_in_parent(pos_in_parent: &PosInParent, parent: &OctreeNode) -> Self {
         Self {
-            index: idx,
+            index: pos_in_parent.get_idx(parent.index),
             x: CoordinateBorders::from_parent(&parent.x, pos_in_parent.in_lower_x_half()),
             y: CoordinateBorders::from_parent(&parent.y, pos_in_parent.in_lower_y_half()),
             z: CoordinateBorders::from_parent(&parent.z, pos_in_parent.in_lower_z_half()),
@@ -235,7 +202,7 @@ impl OctreeNode {
 
     pub fn get_idx_children(idx: u64) -> Vec<u64> {
         if OctreeNode::has_children(idx) {
-            (idx * 8 + 1..idx * 8 + 8).collect()
+            (idx * 8 + 1..=idx * 8 + 8).collect()
         } else {
             vec![]
         }
@@ -253,7 +220,7 @@ impl OctreeNode {
     }
 }
 
-struct OctreeIterator<'a> {
+pub struct OctreeIterator<'a> {
     octree: &'a Octree,
     last_up: u64,
     cur: u64,
@@ -282,83 +249,4 @@ impl<'a> Iterator for OctreeIterator<'a> {
         self.cur = OctreeNode::get_idx_parent(self.cur)?;
         Some(self.cur)
     }
-}
-
-pub struct CollisionStack<'a> {
-    stack: Vec<(u64, (u32, &'a HitBox))>,
-}
-
-impl<'a> CollisionStack<'a> {
-    fn new() -> Self {
-        Self { stack: vec![] }
-    }
-    fn add_node_elements(
-        &mut self,
-        octree_elements: &'a HashMap<u64, Vec<(u32, HitBox)>>,
-        node: u64,
-    ) {
-        if !octree_elements.contains_key(&node) {
-            return;
-        }
-        for (index, hit_box) in octree_elements.get(&node).unwrap() {
-            self.stack.push((node, (*index, hit_box)));
-        }
-    }
-
-    fn remove_lower_elements(&mut self, node: u64) {
-        while self.stack.last().is_some() && self.stack.last().unwrap().0 > node {
-            self.stack.pop();
-        }
-    }
-}
-
-const MESH_GAMEOBJECT_ID: u32 = u32::MAX;
-
-pub fn calculate_collisions(entities: &mut HashMap<u32, Box<dyn GameObjectTrait>>) {
-    let mut octree_elements: HashMap<u64, Vec<(u32, HitBox)>> = HashMap::new();
-    let mut octree = Octree::new(
-        CoordinateBorders {
-            lower: -5000.,
-            upper: 5000.,
-        },
-        CoordinateBorders {
-            lower: -5000.,
-            upper: 5000.,
-        },
-        CoordinateBorders {
-            lower: -5000.,
-            upper: 5000.,
-        },
-    );
-    for (index, entity) in entities {
-        let hit_box = entity.get_hitbox();
-        let key = octree.add_element(&hit_box);
-        if key.is_none() {
-            continue;
-        }
-        let key = key.unwrap();
-        octree_elements.entry(key).or_default();
-        octree_elements
-            .get_mut(&key)
-            .unwrap()
-            .push((*index, hit_box));
-    }
-    let _collisions: HashMap<u32, Vec<u32>> = HashMap::new();
-    let mut stack: CollisionStack = CollisionStack::new();
-    stack.add_node_elements(&octree_elements, 0);
-    let mut prev_node: u64 = 0;
-    for node in &octree {
-        if node < prev_node {
-            //step up the octree
-            stack.remove_lower_elements(node);
-        } else {
-            //step down the octree
-            stack.add_node_elements(&octree_elements, node);
-        }
-        prev_node = node;
-    }
-}
-
-fn check_collision(_obj_1: &HitBox, _obj_2: &HitBox) -> bool {
-    true
 }
