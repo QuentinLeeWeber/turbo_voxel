@@ -221,6 +221,39 @@ mod tests {
     }
 
     #[test]
+    #[should_panic]
+    fn test_ridged_noise_continuity_should_fail() {
+        let eps = 1.;
+        let chunk_width: usize = 64;
+
+        let new_chunk = |cx, cy| {
+            ridged_noise(RigedNoiseParams {
+                chunk_x: cx,
+                chunk_y: cy,
+                amplitude: 1.,
+                gradient_spacing: 14,
+                chunk_width: chunk_width as u32,
+                seed: 42,
+                octaves: 1,
+                frequency_gain: 0.5,
+                amplitude_gain: 1.,
+            })
+        };
+
+        let chunk00 = new_chunk(0, 0);
+        let chunk10 = new_chunk(1, 0);
+        let chunk01 = new_chunk(0, 1);
+
+        for y in 0..chunk_width {
+            assert!((chunk00[chunk_width - 1][y] - chunk10[0][y]).abs() < eps);
+        }
+
+        for x in 0..chunk_width {
+            assert!((chunk00[x][chunk_width - 1] - chunk01[x][0]).abs() < eps);
+        }
+    }
+
+    #[test]
     fn test_ridged_noise_continuity_multiple_octaves() {
         let eps = 1.;
         let chunk_width: usize = 64;
