@@ -1,12 +1,12 @@
-use crate::{
-    engine::{
-        camera::{Camera, CameraController, Projection},
-        chunk_loader::{ChunkLoader, ChunkLoaderSettings},
-        renderer::Renderer,
-    },
-    game_object::{EndOfLife, GameObjectID, GameObjectTrait},
-    hit_box::HitBox,
-};
+// use crate::{
+//     engine::{
+//         camera::{Camera, CameraController, Projection},
+//         chunk_loader::{ChunkLoader, ChunkLoaderSettings},
+//         renderer::Renderer,
+//     },
+//     game_object::{EndOfLife, GameObjectID, GameObjectTrait},
+//     hit_box::HitBox,
+// };
 use bincode_next::{Decode, Encode};
 use cgmath::{Deg, Point3, Rad};
 use std::{alloc, collections::HashMap, num::NonZero, sync::Arc};
@@ -18,17 +18,20 @@ use winit::{
     window::{Window, WindowId},
 };
 
-pub mod camera;
-mod chunk_loader;
-mod db_worker;
-pub mod marching_cubes;
-mod marching_cubes_data;
-mod perlin_noise;
-pub mod physics;
-pub mod renderer;
-mod scene;
-mod thread_pool;
-pub mod world_gen;
+mod renderer;
+mod world_generation;
+
+// pub mod camera;
+// mod chunk_loader;
+// mod db_worker;
+// pub mod marching_cubes;
+// mod marching_cubes_data;
+// mod perlin_noise;
+// pub mod physics;
+// pub mod renderer;
+// mod scene;
+// mod thread_pool;
+// pub mod world_gen;
 
 #[derive(Clone, Copy, Debug, Default, Encode, Decode, PartialEq, Eq)]
 pub enum Material {
