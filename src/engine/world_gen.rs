@@ -15,7 +15,7 @@ pub fn generate_chunk(x: i32, y: i32, z: i32) -> Chunk {
         chunk_x: x,
         chunk_y: z,
         amplitude: 20.,
-        gradient_spacing: 100,
+        gradient_spacing: 64,
         seed: PERLIN_SEED,
         octaves: 5,
         frequency_gain: 0.5,
@@ -63,6 +63,9 @@ fn gen_2d_range(
 }
 
 fn ridged_noise(params: RigedNoiseParams) -> Vec<Vec<f32>> {
+    // this is dirty, but since I am the only one working with world generation (hopefully), this is fine
+    assert!(params.gradient_spacing > 0 && params.chunk_width % params.gradient_spacing == 0);
+
     let mut map = vec![vec![0.0; params.chunk_width as usize]; params.chunk_width as usize];
 
     let mut amplitude = params.amplitude;
@@ -95,6 +98,22 @@ fn ridged_noise(params: RigedNoiseParams) -> Vec<Vec<f32>> {
 mod tests {
     use super::*;
 
+    #[test]
+    #[should_panic]
+    fn test_chunk_with_not_multiple_of_gradient_spacing() {
+        let _ = ridged_noise(RigedNoiseParams {
+            chunk_x: 0,
+            chunk_y: 0,
+            amplitude: 20.0,
+            gradient_spacing: 100,
+            seed: PERLIN_SEED,
+            octaves: 5,
+            frequency_gain: 0.5,
+            amplitude_gain: 0.5,
+            chunk_width: 128,
+        });
+    }
+
     // Run with: cargo test debug_ridged_noise_image -- --nocapture
     #[test]
     fn debug_ridged_noise_image() {
@@ -120,7 +139,7 @@ mod tests {
                     chunk_x: cx as i32,
                     chunk_y: cy as i32,
                     amplitude: 20.0,
-                    gradient_spacing: 100,
+                    gradient_spacing: 64,
                     seed: PERLIN_SEED,
                     octaves: 5,
                     frequency_gain: 0.5,

@@ -122,7 +122,7 @@ impl Engine {
             ),
             camera_controller: CameraController::new(10.0, 1.0),
             chunk_loader: ChunkLoader::new(ChunkLoaderSettings {
-                view_distance: 1,
+                view_distance: 2,
                 thread_count: std::thread::available_parallelism()
                     .unwrap_or(NonZero::new(4).unwrap()),
                 db_path: "world.db".into(),
